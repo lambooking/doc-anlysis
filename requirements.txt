@@ -1,0 +1,26 @@
+# 核心依赖
+pymupdf>=1.24.0
+pymupdf4llm>=0.0.10
+python-docx>=1.1.0
+pydantic>=2.0.0
+pyyaml>=6.0.0
+openai>=1.0.0
+
+# 文档转换
+python-docx2pdf>=0.1.8
+pikepdf>=8.0.0
+
+# 模糊匹配
+fuzzywuzzy>=0.18.0
+python-Levenshtein>=0.21.0
+
+# 异步处理
+aiofiles>=23.0.0
+
+# 工具库
+Pillow>=10.0.0
+typing-extensions>=4.0.0
+
+# 可选依赖（用于 DOC 转换）
+# unoconv (需要 LibreOffice)
+

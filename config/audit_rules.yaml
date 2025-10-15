@@ -1,0 +1,350 @@
+version: "1.0"
+audit_scenarios:
+  # ==================== 作业指导书审核规则 ====================
+  - scenario_id: "work_instruction_audit"
+    name: "作业指导书审核"
+    total_points: 100
+    
+    dimensions:
+      # 维度1: 结构完整性
+      - dimension_id: "structure_integrity"
+        name: "结构完整性"
+        weight: 0.20
+        
+        items:
+          - item_id: "toc_coverage"
+            name: "目录覆盖全面性"
+            checkpoints:
+              - checkpoint_id: "toc_01"
+                description: "是否包含岗位条件说明章节"
+                severity: "critical"
+                max_deduction: 5
+              
+              - checkpoint_id: "toc_02"
+                description: "是否包含职责说明章节"
+                severity: "high"
+                max_deduction: 3
+              
+              - checkpoint_id: "toc_03"
+                description: "是否包含作业流程章节"
+                severity: "critical"
+                max_deduction: 5
+          
+          - item_id: "chapter_numbering"
+            name: "章节编号规范性"
+            checkpoints:
+              - checkpoint_id: "num_01"
+                description: "章节编号是否连续且符合规范（如 1, 1.1, 1.1.1）"
+                severity: "medium"
+                max_deduction: 3
+              
+              - checkpoint_id: "num_02"
+                description: "各级标题是否正确使用编号"
+                severity: "low"
+                max_deduction: 2
+      
+      # 维度2: 内容完整性
+      - dimension_id: "content_completeness"
+        name: "内容完整性"
+        weight: 0.40
+        
+        items:
+          - item_id: "safety_notes"
+            name: "安全注意事项"
+            checkpoints:
+              - checkpoint_id: "safety_01"
+                description: "每个作业步骤是否包含安全注意事项"
+                severity: "critical"
+                max_deduction: 10
+              
+              - checkpoint_id: "safety_02"
+                description: "是否明确标注危险源和风险点"
+                severity: "critical"
+                max_deduction: 8
+              
+              - checkpoint_id: "safety_03"
+                description: "是否提供个人防护装备要求"
+                severity: "high"
+                max_deduction: 5
+          
+          - item_id: "operation_steps"
+            name: "操作步骤完整性"
+            checkpoints:
+              - checkpoint_id: "step_01"
+                description: "作业步骤是否清晰、完整、可执行"
+                severity: "high"
+                max_deduction: 7
+              
+              - checkpoint_id: "step_02"
+                description: "是否包含准备工作、实施步骤、收尾工作"
+                severity: "medium"
+                max_deduction: 5
+              
+              - checkpoint_id: "step_03"
+                description: "关键步骤是否有详细说明或配图"
+                severity: "medium"
+                max_deduction: 4
+      
+      # 维度3: 格式规范性
+      - dimension_id: "format_compliance"
+        name: "格式规范性"
+        weight: 0.15
+        
+        items:
+          - item_id: "text_format"
+            name: "文本格式"
+            checkpoints:
+              - checkpoint_id: "fmt_01"
+                description: "标题字体是否符合规范（如一级标题黑体、二级标题宋体加粗）"
+                severity: "low"
+                max_deduction: 2
+              
+              - checkpoint_id: "fmt_02"
+                description: "正文字体和字号是否统一"
+                severity: "low"
+                max_deduction: 2
+              
+              - checkpoint_id: "fmt_03"
+                description: "行间距和段间距是否符合规范"
+                severity: "low"
+                max_deduction: 1
+          
+          - item_id: "title_hierarchy"
+            name: "标题层级"
+            checkpoints:
+              - checkpoint_id: "title_01"
+                description: "标题层级是否清晰且不超过4级"
+                severity: "medium"
+                max_deduction: 3
+              
+              - checkpoint_id: "title_02"
+                description: "同级标题格式是否一致"
+                severity: "low"
+                max_deduction: 2
+      
+      # 维度4: 图表质量
+      - dimension_id: "visual_quality"
+        name: "图表质量"
+        weight: 0.15
+        
+        items:
+          - item_id: "image_clarity"
+            name: "图片清晰度"
+            checkpoints:
+              - checkpoint_id: "img_01"
+                description: "所有图片是否清晰可辨"
+                severity: "medium"
+                max_deduction: 4
+              
+              - checkpoint_id: "img_02"
+                description: "图片是否有编号和标题"
+                severity: "low"
+                max_deduction: 2
+          
+          - item_id: "table_completeness"
+            name: "表格完整性"
+            checkpoints:
+              - checkpoint_id: "tbl_01"
+                description: "表格是否有标题和编号"
+                severity: "low"
+                max_deduction: 2
+              
+              - checkpoint_id: "tbl_02"
+                description: "表格内容是否完整无遗漏"
+                severity: "medium"
+                max_deduction: 4
+              
+              - checkpoint_id: "tbl_03"
+                description: "表格格式是否规范（边框、对齐）"
+                severity: "low"
+                max_deduction: 2
+      
+      # 维度5: 附件完整性
+      - dimension_id: "appendix_completeness"
+        name: "附件完整性"
+        weight: 0.10
+        
+        items:
+          - item_id: "appendix_coverage"
+            name: "附录和参考文献"
+            checkpoints:
+              - checkpoint_id: "app_01"
+                description: "是否包含相关法规和标准清单"
+                severity: "medium"
+                max_deduction: 3
+              
+              - checkpoint_id: "app_02"
+                description: "是否包含必要的附录（如表单模板、检查清单）"
+                severity: "medium"
+                max_deduction: 4
+              
+              - checkpoint_id: "app_03"
+                description: "参考文献引用是否规范"
+                severity: "low"
+                max_deduction: 3
+
+  # ==================== 风险管控方案审核规则 ====================
+  - scenario_id: "risk_management_audit"
+    name: "风险管控方案审核"
+    total_points: 100
+    
+    dimensions:
+      # 维度1: 风险识别完整性
+      - dimension_id: "risk_identification"
+        name: "风险识别完整性"
+        weight: 0.30
+        
+        items:
+          - item_id: "hazard_identification"
+            name: "危险源识别"
+            checkpoints:
+              - checkpoint_id: "haz_01"
+                description: "是否系统识别所有主要危险源"
+                severity: "critical"
+                max_deduction: 10
+              
+              - checkpoint_id: "haz_02"
+                description: "危险源分类是否科学合理（物理、化学、生物、人因等）"
+                severity: "high"
+                max_deduction: 6
+              
+              - checkpoint_id: "haz_03"
+                description: "是否采用科学方法进行风险评估（如LEC法、作业条件危险性评价）"
+                severity: "high"
+                max_deduction: 6
+          
+          - item_id: "risk_level"
+            name: "风险等级评定"
+            checkpoints:
+              - checkpoint_id: "risk_01"
+                description: "是否对每个危险源进行风险等级评定"
+                severity: "critical"
+                max_deduction: 8
+              
+              - checkpoint_id: "risk_02"
+                description: "风险等级划分标准是否明确"
+                severity: "medium"
+                max_deduction: 4
+      
+      # 维度2: 管控措施有效性
+      - dimension_id: "control_effectiveness"
+        name: "管控措施有效性"
+        weight: 0.35
+        
+        items:
+          - item_id: "technical_measures"
+            name: "技术措施"
+            checkpoints:
+              - checkpoint_id: "tech_01"
+                description: "是否针对每个风险点制定技术管控措施"
+                severity: "critical"
+                max_deduction: 10
+              
+              - checkpoint_id: "tech_02"
+                description: "技术措施是否符合本质安全原则（消除、替代、工程控制）"
+                severity: "high"
+                max_deduction: 6
+              
+              - checkpoint_id: "tech_03"
+                description: "是否明确安全设施和防护装置要求"
+                severity: "high"
+                max_deduction: 5
+          
+          - item_id: "management_measures"
+            name: "管理措施"
+            checkpoints:
+              - checkpoint_id: "mgmt_01"
+                description: "是否制定管理制度和操作规程"
+                severity: "high"
+                max_deduction: 6
+              
+              - checkpoint_id: "mgmt_02"
+                description: "是否明确培训教育要求"
+                severity: "medium"
+                max_deduction: 4
+              
+              - checkpoint_id: "mgmt_03"
+                description: "是否建立监督检查机制"
+                severity: "medium"
+                max_deduction: 4
+      
+      # 维度3: 应急预案完备性
+      - dimension_id: "emergency_preparedness"
+        name: "应急预案完备性"
+        weight: 0.20
+        
+        items:
+          - item_id: "emergency_process"
+            name: "应急流程"
+            checkpoints:
+              - checkpoint_id: "emer_01"
+                description: "是否制定针对性的应急预案"
+                severity: "critical"
+                max_deduction: 8
+              
+              - checkpoint_id: "emer_02"
+                description: "应急响应流程是否清晰可执行"
+                severity: "high"
+                max_deduction: 5
+              
+              - checkpoint_id: "emer_03"
+                description: "是否明确应急处置措施和步骤"
+                severity: "high"
+                max_deduction: 5
+          
+          - item_id: "emergency_contacts"
+            name: "应急联系方式"
+            checkpoints:
+              - checkpoint_id: "contact_01"
+                description: "是否提供完整的应急联系人和联系方式"
+                severity: "medium"
+                max_deduction: 4
+              
+              - checkpoint_id: "contact_02"
+                description: "是否包含外部救援机构联系方式（消防、医疗、环保等）"
+                severity: "medium"
+                max_deduction: 3
+      
+      # 维度4: 责任分工明确性
+      - dimension_id: "responsibility_clarity"
+        name: "责任分工明确性"
+        weight: 0.10
+        
+        items:
+          - item_id: "job_responsibility"
+            name: "岗位职责"
+            checkpoints:
+              - checkpoint_id: "resp_01"
+                description: "是否明确各岗位安全职责"
+                severity: "high"
+                max_deduction: 5
+              
+              - checkpoint_id: "resp_02"
+                description: "责任人和责任范围是否清晰"
+                severity: "medium"
+                max_deduction: 3
+              
+              - checkpoint_id: "resp_03"
+                description: "是否建立问责机制"
+                severity: "low"
+                max_deduction: 2
+      
+      # 维度5: 检查与更新机制
+      - dimension_id: "review_update"
+        name: "检查与更新机制"
+        weight: 0.05
+        
+        items:
+          - item_id: "periodic_review"
+            name: "定期检查要求"
+            checkpoints:
+              - checkpoint_id: "review_01"
+                description: "是否明确定期检查和评估要求"
+                severity: "medium"
+                max_deduction: 3
+              
+              - checkpoint_id: "review_02"
+                description: "是否规定方案更新和修订条件"
+                severity: "low"
+                max_deduction: 2
+
