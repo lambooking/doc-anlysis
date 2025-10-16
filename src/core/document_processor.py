@@ -68,13 +68,23 @@ class DocumentProcessor:
         
         # 提取 Markdown 格式（适合 VLM 输入）
         try:
-            md_text = pymupdf4llm.to_markdown(
+            md_result = pymupdf4llm.to_markdown(
                 doc=str(pdf_path),
                 page_chunks=True,
                 write_images=True,
                 image_path=str(self.image_dir),
                 embed_images=False
             )
+            
+            # 处理返回结果：如果是列表则合并为字符串
+            if isinstance(md_result, list):
+                md_text = "\n\n".join(
+                    page.get('text', '') if isinstance(page, dict) else str(page)
+                    for page in md_result
+                )
+            else:
+                md_text = str(md_result)
+                
         except Exception as e:
             logger.warning(f"Markdown 提取失败，使用备用方法: {e}")
             md_text = self._extract_text_fallback(doc)
@@ -217,10 +227,21 @@ class DocumentProcessor:
         try:
             tables = page.find_tables()
             for idx, table in enumerate(tables):
+                # 提取表格数据并处理 None 值
+                table_data = []
+                if hasattr(table, 'extract'):
+                    raw_data = table.extract()
+                    if raw_data:
+                        # 将 None 转换为空字符串
+                        table_data = [
+                            [str(cell) if cell is not None else '' for cell in row]
+                            for row in raw_data
+                        ]
+                
                 page_info.tables.append(TableInfo(
                     index=idx,
                     bbox=list(table.bbox) if hasattr(table.bbox, '__iter__') else None,
-                    data=table.extract() if hasattr(table, 'extract') else []
+                    data=table_data
                 ))
         except Exception as e:
             logger.warning(f"页面 {page_num} 表格提取失败: {e}")
