@@ -6,10 +6,10 @@ vllm:
   max_tokens: 3000
   
 pipeline:
-  timeout: 120  # 总超时时间（秒）
+  timeout: 120  # 总超时时间（秒）- 注意：当前版本已移除超时限制，可处理任意大小文档
   dpi: 150  # 图片 DPI
   max_retries: 3  # 最大重试次数
-  max_pages: 20  # 单次处理最大页数
+  max_pages: 20  # 单次处理最大页数（已废弃，当前版本处理所有页面）
   
 output:
   format: "pdf"  # 输出格式

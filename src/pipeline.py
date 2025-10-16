@@ -72,40 +72,35 @@ class DocumentAuditPipeline:
         stages = []
         
         try:
-            # 阶段 1: 文档处理 (10-20s)
+            # 阶段 1: 文档处理 (无超时限制，根据文档大小动态调整)
             stage1 = await self._run_with_timeout(
                 self._stage_document_processing(document_path),
-                timeout=20,
+                timeout=float('inf'),  # 无限超时
                 stage_name="文档处理"
             )
             stages.append(stage1['stage'])
             doc_structure = stage1['result']['doc_structure']
             page_images = stage1['result']['page_images']
             
-            # 检查剩余时间
-            elapsed = time.time() - start_time
-            if elapsed > timeout - 70:
-                raise asyncio.TimeoutError(f"时间不足，已用 {elapsed:.1f}s")
-            
-            # 阶段 2: VLM 推理 (60-80s)
+            # 阶段 2: VLM 推理 (无超时限制)
             stage2 = await self._run_with_timeout(
                 self._stage_vlm_inference(doc_structure, page_images, scenario_id),
-                timeout=80,
+                timeout=float('inf'),  # 无限超时
                 stage_name="VLM 推理"
             )
             stages.append(stage2['stage'])
             audit_result = stage2['result']
             
-            # 阶段 3: 批注生成 (5-10s)
+            # 阶段 3: 批注生成 (无超时限制)
             stage3 = await self._run_with_timeout(
                 self._stage_annotation(document_path, audit_result, output_name),
-                timeout=15,
+                timeout=float('inf'),  # 无限超时
                 stage_name="批注生成"
             )
             stages.append(stage3['stage'])
             annotated_path = stage3['result']
             
-            # 阶段 4: 报告生成 (2-5s)
+            # 阶段 4: 报告生成 (无超时限制)
             stage4 = await self._run_with_timeout(
                 self._stage_report_generation(
                     doc_path.name, 
@@ -113,7 +108,7 @@ class DocumentAuditPipeline:
                     audit_result, 
                     output_name
                 ),
-                timeout=10,
+                timeout=float('inf'),  # 无限超时
                 stage_name="报告生成"
             )
             stages.append(stage4['stage'])
@@ -164,8 +159,7 @@ class DocumentAuditPipeline:
         
         logger.info(f"文档解析完成: {doc_structure.page_count} 页")
         
-        # 生成页面图片
-        # 首先检查是否为 PDF，如果不是则需要转换
+        # 生成页面图片（处理所有页面，无限制）
         doc_path = Path(document_path)
         if doc_path.suffix.lower() != '.pdf':
             # 使用临时转换的 PDF
@@ -202,13 +196,13 @@ class DocumentAuditPipeline:
         """阶段 2: VLM 推理"""
         logger.info("[阶段 2/4] VLM 推理开始...")
         
-        # 调用 VLM 进行审核
+        # 调用 VLM 进行审核（处理所有页面）
         audit_result = await asyncio.to_thread(
             self.vlm_client.audit_document,
             doc_structure,
             page_images,
             scenario_id,
-            self.config.pipeline_max_pages
+            None  # 不限制页数
         )
         
         logger.info(f"VLM 推理完成: 发现 {len(audit_result.violations)} 个问题")
