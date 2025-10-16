@@ -52,7 +52,7 @@ htmlcov/
 *.backup
 
 # Model files (if any)
-models/
+# models/
 *.pth
 *.bin
 *.safetensors
