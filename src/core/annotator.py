@@ -127,20 +127,23 @@ class PDFAnnotator:
             
             # 使用详细的批注内容
             annotation_content = self._format_annotation_content(violation, violation_num)
-            highlight.set_info(
-                title=self._format_annotation_title(violation, violation_num),
-                content=annotation_content
-            )
+            annotation_title = self._format_annotation_title(violation, violation_num)
+            
+            # 设置高亮批注的信息（使用 info 字典）
+            highlight.info["title"] = annotation_title
+            highlight.info["content"] = annotation_content
+            highlight.info["subject"] = annotation_title
             highlight.update()
             
-            # 在旁边添加气泡标记（更显眼）
+            # 在旁边添加气泡标记（更显眼）- 去除表情符号
             point = rect.top_right + pymupdf.Point(10, 0)  # 右侧10px
-            note = page.add_text_annot(point, f"💡{violation_num}")
+            note = page.add_text_annot(point, f"#{violation_num}")
             note.set_colors(stroke=color)
-            note.set_info(
-                title=self._format_annotation_title(violation, violation_num),
-                content=annotation_content
-            )
+            
+            # 设置气泡批注的信息（使用 info 字典）
+            note.info["title"] = annotation_title
+            note.info["content"] = annotation_content
+            note.info["subject"] = annotation_title
             note.update()
             
             logger.debug(f"批注添加成功: 问题 #{violation_num} 在第 {violation.location.page} 页")
@@ -200,13 +203,15 @@ class PDFAnnotator:
         color = self.SEVERITY_COLORS.get(violation.severity, (1, 1, 0))
         
         annotation_content = self._format_annotation_content(violation, violation_num)
+        annotation_title = self._format_annotation_title(violation, violation_num)
         
         note = page.add_text_annot(point, f"问题 #{violation_num}")
         note.set_colors(stroke=color)
-        note.set_info(
-            title=self._format_annotation_title(violation, violation_num),
-            content=annotation_content
-        )
+        
+        # 使用 info 字典设置批注信息
+        note.info["title"] = annotation_title
+        note.info["content"] = annotation_content
+        note.info["subject"] = annotation_title
         note.update()
     
     def _format_annotation_content(self, violation: Violation, num: int) -> str:
@@ -286,6 +291,7 @@ class PDFAnnotator:
         
         color = self.SEVERITY_COLORS.get(violation.severity, (1, 1, 0))
         annotation_content = self._format_annotation_content(violation, violation_num)
+        annotation_title = self._format_annotation_title(violation, violation_num)
         
         if image_list:
             # 取第一个图片区域
@@ -297,14 +303,15 @@ class PDFAnnotator:
                 if img_rects:
                     img_rect = img_rects[0]
                     
-                    # 2. 在图片右上角添加醒目标记
+                    # 2. 在图片右上角添加醒目标记 - 去除表情符号
                     marker_point = img_rect.top_right + pymupdf.Point(5, 5)
-                    note = page.add_text_annot(marker_point, f"⚠️{violation_num}")
+                    note = page.add_text_annot(marker_point, f"图片问题#{violation_num}")
                     note.set_colors(stroke=color)
-                    note.set_info(
-                        title=self._format_annotation_title(violation, violation_num),
-                        content=annotation_content
-                    )
+                    
+                    # 使用 info 字典设置批注信息
+                    note.info["title"] = annotation_title
+                    note.info["content"] = annotation_content
+                    note.info["subject"] = annotation_title
                     note.update()
                     
                     # 3. 添加边框高亮图片区域
@@ -317,12 +324,13 @@ class PDFAnnotator:
         
         # 如果无法定位图片，在页面中央添加批注
         center_point = pymupdf.Point(page.rect.width / 2, 100)
-        note = page.add_text_annot(center_point, f"⚠️图片问题 #{violation_num}")
+        note = page.add_text_annot(center_point, f"图片问题 #{violation_num}")
         note.set_colors(stroke=color)
-        note.set_info(
-            title=self._format_annotation_title(violation, violation_num),
-            content=annotation_content
-        )
+        
+        # 使用 info 字典设置批注信息
+        note.info["title"] = annotation_title
+        note.info["content"] = annotation_content
+        note.info["subject"] = annotation_title
         note.update()
         
         logger.debug(f"图片批注添加成功（降级方案）: 问题 #{violation_num}")
