@@ -1,7 +1,8 @@
 """分层审核引擎 - 解决超长文档问题"""
 import asyncio
 import re
-from typing import List, Dict, Any
+import json
+from typing import List, Dict, Any, Optional
 from ..models.schemas import AuditResult, Violation, DocumentStructure
 from ..utils.logger import get_logger
 
@@ -503,7 +504,6 @@ class LayeredAuditor:
             violations列表
         """
         from openai import OpenAI
-        import json
         
         client = OpenAI(
             base_url=self.vlm_client.config.vllm_base_url,
