@@ -3,13 +3,20 @@ vllm:
   api_key: "token-abc123"
   model: "Qwen/Qwen2.5-VL-7B-Instruct"
   temperature: 0.1
-  max_tokens: 3000
+  max_tokens: 2000  # 从3000减少到2000（适应分块）
   
 pipeline:
-  timeout: 120  # 总超时时间（秒）- 注意：当前版本已移除超时限制，可处理任意大小文档
+  timeout: 300  # 从120秒增加到300秒（分块审核需要更多时间）
   dpi: 150  # 图片 DPI
   max_retries: 3  # 最大重试次数
   max_pages: 20  # 单次处理最大页数（已废弃，当前版本处理所有页面）
+  
+  # 新增：分层审核配置
+  layered_audit:
+    enabled: true  # 启用分层审核
+    chunk_size: 3  # 每块3页
+    max_concurrent_chunks: 3  # 最多3个并发请求
+    trigger_page_count: 20  # 超过20页启用分层审核
   
 output:
   format: "pdf"  # 输出格式

@@ -1,5 +1,6 @@
 """VLM 推理客户端模块"""
 import json
+import asyncio
 from typing import List, Dict, Any, Optional
 from openai import OpenAI
 from ..models.schemas import AuditResult, DocumentStructure
@@ -219,6 +220,10 @@ class VLMClient:
         )
         self.rule_engine = RuleEngine()
         
+        # 新增：初始化分层审核引擎
+        from .layered_auditor import LayeredAuditor
+        self.layered_auditor = LayeredAuditor(self, self.rule_engine)
+        
         logger.info(f"VLM 客户端初始化完成，连接到: {self.config.vllm_base_url}")
     
     def audit_document(
@@ -229,7 +234,7 @@ class VLMClient:
         max_pages: Optional[int] = None
     ) -> AuditResult:
         """
-        审核文档
+        审核文档（智能选择标准审核或分层审核）
         
         Args:
             doc_structure: 文档结构数据
@@ -242,6 +247,47 @@ class VLMClient:
         """
         logger.info(f"开始审核，场景: {scenario_id}")
         
+        # 判断是否需要分层审核
+        trigger_page_count = getattr(self.config, 'layered_audit_trigger_page_count', 20)
+        
+        if doc_structure.page_count > trigger_page_count:
+            logger.info(f"文档页数 {doc_structure.page_count} 超过 {trigger_page_count} 页，启用分层审核")
+            
+            # 使用分层审核引擎
+            result = asyncio.run(
+                self.layered_auditor.audit_document(
+                    doc_structure, page_images, scenario_id
+                )
+            )
+            return result
+        
+        else:
+            logger.info(f"文档页数 {doc_structure.page_count} ≤ {trigger_page_count} 页，使用标准审核")
+            
+            # 使用原有的标准审核逻辑
+            return self._audit_document_standard(
+                doc_structure, page_images, scenario_id, max_pages
+            )
+    
+    def _audit_document_standard(
+        self,
+        doc_structure: DocumentStructure,
+        page_images: List[Dict[str, Any]],
+        scenario_id: str,
+        max_pages: Optional[int]
+    ) -> AuditResult:
+        """
+        标准审核流程（原有逻辑）
+        
+        Args:
+            doc_structure: 文档结构数据
+            page_images: 页面图片列表
+            scenario_id: 审核场景ID
+            max_pages: 最大处理页数（限制）
+        
+        Returns:
+            审核结果
+        """
         # 限制页数
         if max_pages and len(page_images) > max_pages:
             logger.warning(f"文档超过最大页数限制 {max_pages}，仅处理前 {max_pages} 页")

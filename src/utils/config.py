@@ -94,6 +94,23 @@ class Config:
     @property
     def log_file(self) -> str:
         return self.get('logging.file', './logs/audit.log')
+    
+    # 新增：分层审核配置
+    @property
+    def layered_audit_enabled(self) -> bool:
+        return self.get('pipeline.layered_audit.enabled', True)
+    
+    @property
+    def layered_audit_chunk_size(self) -> int:
+        return self.get('pipeline.layered_audit.chunk_size', 3)
+    
+    @property
+    def layered_audit_max_concurrent_chunks(self) -> int:
+        return self.get('pipeline.layered_audit.max_concurrent_chunks', 3)
+    
+    @property
+    def layered_audit_trigger_page_count(self) -> int:
+        return self.get('pipeline.layered_audit.trigger_page_count', 20)
 
 
 # 全局配置实例
