@@ -130,8 +130,9 @@ class PDFAnnotator:
             annotation_title = self._format_annotation_title(violation, violation_num)
             
             # 设置高亮批注的信息（使用 info 字典）
+            # 注意：PyMuPDF 使用 "contents" 而不是 "content"
             highlight.info["title"] = annotation_title
-            highlight.info["content"] = annotation_content
+            highlight.info["contents"] = annotation_content  # 使用 contents（复数）
             highlight.info["subject"] = annotation_title
             highlight.update()
             
@@ -142,7 +143,7 @@ class PDFAnnotator:
             
             # 设置气泡批注的信息（使用 info 字典）
             note.info["title"] = annotation_title
-            note.info["content"] = annotation_content
+            note.info["contents"] = annotation_content  # 使用 contents（复数）
             note.info["subject"] = annotation_title
             note.update()
             
@@ -210,7 +211,7 @@ class PDFAnnotator:
         
         # 使用 info 字典设置批注信息
         note.info["title"] = annotation_title
-        note.info["content"] = annotation_content
+        note.info["contents"] = annotation_content  # 使用 contents（复数）
         note.info["subject"] = annotation_title
         note.update()
     
@@ -310,7 +311,7 @@ class PDFAnnotator:
                     
                     # 使用 info 字典设置批注信息
                     note.info["title"] = annotation_title
-                    note.info["content"] = annotation_content
+                    note.info["contents"] = annotation_content  # 使用 contents（复数）
                     note.info["subject"] = annotation_title
                     note.update()
                     
@@ -329,7 +330,7 @@ class PDFAnnotator:
         
         # 使用 info 字典设置批注信息
         note.info["title"] = annotation_title
-        note.info["content"] = annotation_content
+        note.info["contents"] = annotation_content  # 使用 contents（复数）
         note.info["subject"] = annotation_title
         note.update()
         
