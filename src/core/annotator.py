@@ -75,7 +75,7 @@ class PDFAnnotator:
         violation_num: int,
         fuzzy_threshold: int
     ):
-        """添加单个违规批注"""
+        """添加单个违规批注（增强版）"""
         page_num = violation.location.page - 1
         
         if page_num < 0 or page_num >= len(doc):
@@ -84,6 +84,12 @@ class PDFAnnotator:
         
         page = doc[page_num]
         search_text = violation.location.text_snippet
+        
+        # 检查是否是图片问题
+        if search_text.startswith("[第") and "图]" in search_text:
+            # 特殊处理图片批注
+            self._add_image_annotation(page, violation, violation_num)
+            return
         
         # 尝试精确搜索
         rects = page.search_for(search_text)
@@ -102,19 +108,22 @@ class PDFAnnotator:
             highlight = page.add_highlight_annot(rect)
             highlight.set_colors(stroke=color)
             highlight.set_opacity(0.5)
+            
+            # 使用详细的批注内容
+            annotation_content = self._format_annotation_content(violation, violation_num)
             highlight.set_info(
                 title=f"问题 #{violation_num} [{violation.severity.upper()}]",
-                content=f"[{violation.rule_id}] {violation.finding}\n扣分: {violation.points_deducted}"
+                content=annotation_content
             )
             highlight.update()
             
-            # 添加便签（在高亮旁边）
-            point = rect.top_left
-            note = page.add_text_annot(point, f"问题 #{violation_num}")
+            # 在旁边添加气泡标记（更显眼）
+            point = rect.top_right + pymupdf.Point(10, 0)  # 右侧10px
+            note = page.add_text_annot(point, f"💡{violation_num}")
             note.set_colors(stroke=color)
             note.set_info(
                 title=f"[{violation.severity.upper()}] {violation.rule_id}",
-                content=violation.finding
+                content=annotation_content
             )
             note.update()
             
@@ -174,13 +183,130 @@ class PDFAnnotator:
         point = pymupdf.Point(page.rect.width - 50, 50)
         color = self.SEVERITY_COLORS.get(violation.severity, (1, 1, 0))
         
+        annotation_content = self._format_annotation_content(violation, violation_num)
+        
         note = page.add_text_annot(point, f"问题 #{violation_num}")
         note.set_colors(stroke=color)
         note.set_info(
             title=f"[{violation.severity.upper()}] {violation.rule_id}",
-            content=f"{violation.finding}\n\n位置: {violation.location.region_description}\n文本片段: {violation.location.text_snippet}\n扣分: {violation.points_deducted}"
+            content=annotation_content
         )
         note.update()
+    
+    def _format_annotation_content(self, violation: Violation, num: int) -> str:
+        """
+        格式化批注内容（评委重点看这个）
+        
+        返回格式：
+        【问题描述】
+        具体问题...
+        
+        【扣分】
+        X分
+        
+        【修改建议】
+        应该...
+        """
+        # 从finding中提取问题和建议
+        finding = violation.finding
+        
+        # 如果finding中包含"→"或"应为"，分离问题和建议
+        if "→" in finding:
+            problem, suggestion = finding.split("→", 1)
+            problem = problem.strip()
+            suggestion = suggestion.strip()
+        elif "应为" in finding:
+            problem, suggestion = finding.split("应为", 1)
+            problem = problem.strip()
+            suggestion = f"应为{suggestion.strip()}"
+        else:
+            problem = finding
+            suggestion = "请参考相关规范进行修正"
+        
+        content = f"""【问题描述】
+{problem}
+
+【严重程度】
+{self._severity_label(violation.severity)}
+
+【扣分】
+{violation.points_deducted} 分
+
+【修改建议】
+{suggestion}
+
+【规则ID】
+{violation.rule_id}
+"""
+        return content
+    
+    def _severity_label(self, severity: str) -> str:
+        """严重程度标签"""
+        labels = {
+            'critical': '🔴 关键问题（必须立即修改）',
+            'high': '🟠 高优先级（建议优先修改）',
+            'medium': '🟡 中优先级（建议修改）',
+            'low': '🟢 低优先级（可择机优化）'
+        }
+        return labels.get(severity, severity)
+    
+    def _add_image_annotation(
+        self,
+        page: pymupdf.Page,
+        violation: Violation,
+        violation_num: int
+    ):
+        """
+        为图片问题添加批注
+        
+        处理 text_snippet 为 "[第X页XX图]" 格式的情况
+        """
+        # 在图片上添加箭头或圈注
+        # 1. 识别图片区域
+        image_list = page.get_images()
+        
+        color = self.SEVERITY_COLORS.get(violation.severity, (1, 1, 0))
+        annotation_content = self._format_annotation_content(violation, violation_num)
+        
+        if image_list:
+            # 取第一个图片区域
+            try:
+                img_info = image_list[0]
+                # 获取图片在页面上的位置
+                img_rects = page.get_image_rects(img_info[0])
+                
+                if img_rects:
+                    img_rect = img_rects[0]
+                    
+                    # 2. 在图片右上角添加醒目标记
+                    marker_point = img_rect.top_right + pymupdf.Point(5, 5)
+                    note = page.add_text_annot(marker_point, f"⚠️{violation_num}")
+                    note.set_colors(stroke=color)
+                    note.set_info(
+                        title=f"图片问题 #{violation_num}",
+                        content=annotation_content
+                    )
+                    note.update()
+                    
+                    # 3. 添加边框高亮图片区域
+                    page.draw_rect(img_rect, color=color, width=2)
+                    
+                    logger.debug(f"图片批注添加成功: 问题 #{violation_num}")
+                    return
+            except Exception as e:
+                logger.warning(f"获取图片位置失败: {e}")
+        
+        # 如果无法定位图片，在页面中央添加批注
+        center_point = pymupdf.Point(page.rect.width / 2, 100)
+        note = page.add_text_annot(center_point, f"⚠️图片问题 #{violation_num}")
+        note.set_colors(stroke=color)
+        note.set_info(
+            title=f"图片问题 #{violation_num}",
+            content=annotation_content
+        )
+        note.update()
+        
+        logger.debug(f"图片批注添加成功（降级方案）: 问题 #{violation_num}")
 
 
 class DocumentAnnotator:

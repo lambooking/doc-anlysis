@@ -182,6 +182,121 @@ audit_scenarios:
                 description: "参考文献引用是否规范"
                 severity: "low"
                 max_deduction: 3
+      
+      # 维度6: 文字及语法规范
+      - dimension_id: "grammar_correctness"
+        name: "文字及语法规范"
+        weight: 0.10
+        
+        items:
+          - item_id: "punctuation"
+            name: "标点符号"
+            checkpoints:
+              - checkpoint_id: "punctuation_01"
+                description: "标点符号是否重复（如逗号、句号）"
+                severity: "low"
+                max_deduction: 2
+              
+              - checkpoint_id: "punctuation_02"
+                description: "括号、引号是否匹配"
+                severity: "low"
+                max_deduction: 2
+              
+              - checkpoint_id: "punctuation_03"
+                description: "句号、问号、感叹号使用是否正确"
+                severity: "low"
+                max_deduction: 1
+          
+          - item_id: "sentence_fluency"
+            name: "语句通顺"
+            checkpoints:
+              - checkpoint_id: "sentence_01"
+                description: "是否存在病句（句子不完整、成分残缺）"
+                severity: "medium"
+                max_deduction: 3
+              
+              - checkpoint_id: "sentence_02"
+                description: "是否存在歧义句（表达不清、容易误解）"
+                severity: "medium"
+                max_deduction: 3
+              
+              - checkpoint_id: "sentence_03"
+                description: "语句逻辑是否清晰（无重复赘述、表达准确）"
+                severity: "low"
+                max_deduction: 2
+          
+          - item_id: "terminology"
+            name: "专业术语"
+            checkpoints:
+              - checkpoint_id: "term_01"
+                description: "专业术语拼写是否正确"
+                severity: "medium"
+                max_deduction: 3
+              
+              - checkpoint_id: "term_02"
+                description: "术语使用是否统一（全文一致）"
+                severity: "medium"
+                max_deduction: 3
+              
+              - checkpoint_id: "term_03"
+                description: "术语使用是否规范（符合行业标准）"
+                severity: "low"
+                max_deduction: 2
+      
+      # 维度7: 业务逻辑连贯性
+      - dimension_id: "logic_coherence"
+        name: "业务逻辑连贯性"
+        weight: 0.10
+        
+        items:
+          - item_id: "context_coherence"
+            name: "上下文连贯"
+            checkpoints:
+              - checkpoint_id: "logic_01"
+                description: "章节顺序是否连贯（无跳跃、缺失）"
+                severity: "high"
+                max_deduction: 7
+              
+              - checkpoint_id: "logic_02"
+                description: "内容前后是否矛盾"
+                severity: "high"
+                max_deduction: 6
+              
+              - checkpoint_id: "logic_03"
+                description: "引用和被引用内容是否一致"
+                severity: "medium"
+                max_deduction: 4
+          
+          - item_id: "time_logic"
+            name: "时间逻辑"
+            checkpoints:
+              - checkpoint_id: "time_01"
+                description: "时间顺序是否合理（汛前-汛期-汛后）"
+                severity: "high"
+                max_deduction: 6
+              
+              - checkpoint_id: "time_02"
+                description: "时间节点内容是否匹配（内容与所在章节时间一致）"
+                severity: "medium"
+                max_deduction: 4
+          
+          - item_id: "emergency_process"
+            name: "应急处置流程"
+            checkpoints:
+              - checkpoint_id: "emergency_01"
+                description: "应急步骤顺序是否合理（先安全后恢复）"
+                severity: "critical"
+                max_deduction: 10
+              
+              - checkpoint_id: "emergency_02"
+                description: "应急流程是否完整（发现-上报-评估-处置-恢复-总结）"
+                severity: "critical"
+                max_deduction: 10
+              
+              - checkpoint_id: "emergency_03"
+                description: "关键步骤是否缺失（如停输、隔离、通知等）"
+                severity: "high"
+                max_deduction: 8
 
   # ==================== 风险管控方案审核规则 ====================
   - scenario_id: "risk_management_audit"
@@ -345,6 +460,127 @@ audit_scenarios:
               
               - checkpoint_id: "review_02"
                 description: "是否规定方案更新和修订条件"
+                severity: "low"
+                max_deduction: 2
+      
+      # 维度6: 图片标注完整性
+      - dimension_id: "image_annotation"
+        name: "图片标注完整性"
+        weight: 0.15
+        
+        items:
+          - item_id: "impact_map"
+            name: "影像图（高后果区示意图）"
+            checkpoints:
+              - checkpoint_id: "image_annot_01"
+                description: "是否清晰标注管道位置（实线）"
+                severity: "critical"
+                max_deduction: 8
+              
+              - checkpoint_id: "image_annot_02"
+                description: "是否标注潜在影响半径（虚线，管道左右两侧）"
+                severity: "critical"
+                max_deduction: 10
+              
+              - checkpoint_id: "image_annot_03"
+                description: "建筑物标注是否完整（名称、人员数量、属性）"
+                severity: "high"
+                max_deduction: 6
+          
+          - item_id: "route_map"
+            name: "入场路线图"
+            checkpoints:
+              - checkpoint_id: "route_01"
+                description: "入场路线是否合理（不穿山、不穿墙、不跨河无桥）"
+                severity: "critical"
+                max_deduction: 10
+              
+              - checkpoint_id: "route_02"
+                description: "路线是否在可行车道路上"
+                severity: "high"
+                max_deduction: 6
+              
+              - checkpoint_id: "route_03"
+                description: "道路标注是否清晰（道路名称、宽度等）"
+                severity: "medium"
+                max_deduction: 4
+          
+          - item_id: "evacuation_map"
+            name: "逃生路线图"
+            checkpoints:
+              - checkpoint_id: "evac_01"
+                description: "疏散方向是否正确（应向管道两侧，不能顺管道方向）"
+                severity: "critical"
+                max_deduction: 10
+              
+              - checkpoint_id: "evac_02"
+                description: "集结点是否在潜在影响半径外"
+                severity: "critical"
+                max_deduction: 8
+              
+              - checkpoint_id: "evac_03"
+                description: "疏散路线是否标注清晰（箭头、距离、时间）"
+                severity: "high"
+                max_deduction: 5
+      
+      # 维度7: 图文一致性
+      - dimension_id: "text_image_consistency"
+        name: "图文一致性"
+        weight: 0.10
+        
+        items:
+          - item_id: "building_info"
+            name: "建筑物信息一致性"
+            checkpoints:
+              - checkpoint_id: "consistency_01"
+                description: "建筑物描述（层数、人数）是否与影像图标注一致"
+                severity: "high"
+                max_deduction: 8
+              
+              - checkpoint_id: "consistency_02"
+                description: "建筑物名称、类型是否与影像图一致"
+                severity: "medium"
+                max_deduction: 5
+          
+          - item_id: "data_consistency"
+            name: "表格数据一致性"
+            checkpoints:
+              - checkpoint_id: "data_01"
+                description: "区段长、桩号等基础数据在各表中是否一致"
+                severity: "high"
+                max_deduction: 7
+              
+              - checkpoint_id: "data_02"
+                description: "人员数量在不同章节、表格中是否一致"
+                severity: "medium"
+                max_deduction: 5
+              
+              - checkpoint_id: "data_03"
+                description: "位置信息（地址、坐标）是否前后一致"
+                severity: "medium"
+                max_deduction: 4
+      
+      # 维度8: 数据合规性
+      - dimension_id: "data_compliance"
+        name: "数据合规性"
+        weight: 0.05
+        
+        items:
+          - item_id: "range_check"
+            name: "数据范围检查"
+            checkpoints:
+              - checkpoint_id: "range_01"
+                description: "电位测试结果是否在规范范围内（-0.85V ~ -1.2V）"
+                severity: "high"
+                max_deduction: 6
+              
+              - checkpoint_id: "range_02"
+                description: "风险等级是否使用规范术语（低、中、较高、高）"
+                severity: "medium"
+                max_deduction: 3
+              
+              - checkpoint_id: "range_03"
+                description: "数值单位是否统一规范"
                 severity: "low"
                 max_deduction: 2
 
