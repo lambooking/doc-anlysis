@@ -496,13 +496,14 @@ class LayeredAuditor:
                 from ..models.schemas import Violation
                 violations = []
                 for v_dict in parsed:
-                    # 修复text_snippet过短的问题
-                    if 'location' in v_dict and 'text_snippet' in v_dict['location']:
-                        snippet = v_dict['location']['text_snippet']
-                        if len(snippet) < 10:
-                            # 如果太短，添加提示信息
-                            v_dict['location']['text_snippet'] = f"{snippet} (问题位置)"
-                    violations.append(Violation(**v_dict))
+                    # 修复和清洗violation数据
+                    v_dict = self._sanitize_violation(v_dict)
+                    if v_dict:  # 只添加有效的violation
+                        try:
+                            violations.append(Violation(**v_dict))
+                        except Exception as e:
+                            logger.warning(f"无法解析violation: {e}, 数据: {v_dict}")
+                            continue
                 return violations
             elif isinstance(parsed, dict):
                 # 返回的是完整对象
@@ -520,6 +521,82 @@ class LayeredAuditor:
             logger.error(f"VLM调用失败: {e}")
             logger.debug(f"原始响应内容: {content[:500] if 'content' in locals() else 'N/A'}")
             return []
+    
+    def _sanitize_violation(self, v_dict: dict) -> dict:
+        """
+        清洗和修复violation数据
+        
+        处理VLM返回数据不规范的问题：
+        - location是字符串而不是对象
+        - text_snippet过长或过短
+        - 缺少必需字段
+        """
+        try:
+            # 检查必需字段
+            if 'rule_id' not in v_dict or 'severity' not in v_dict or 'finding' not in v_dict:
+                logger.warning(f"violation缺少必需字段，跳过: {v_dict}")
+                return None
+            
+            # 修复location字段
+            if 'location' in v_dict:
+                location = v_dict['location']
+                
+                # 如果location是字符串，尝试构建location对象
+                if isinstance(location, str):
+                    logger.warning(f"location是字符串，尝试修复: {location}")
+                    # 尝试从字符串中提取页码
+                    import re
+                    page_match = re.search(r'第?(\d+)页', location)
+                    page = int(page_match.group(1)) if page_match else 1
+                    
+                    v_dict['location'] = {
+                        'page': page,
+                        'text_snippet': location[:200],  # 截断到200字符
+                        'region_description': location
+                    }
+                
+                # 如果location是字典，修复其中的字段
+                elif isinstance(location, dict):
+                    # 确保有page字段
+                    if 'page' not in location:
+                        location['page'] = 1
+                    
+                    # 修复text_snippet
+                    if 'text_snippet' in location:
+                        snippet = location['text_snippet']
+                        # 截断过长的snippet
+                        if len(snippet) > 200:
+                            location['text_snippet'] = snippet[:197] + '...'
+                        # 补充过短的snippet
+                        elif len(snippet) < 10:
+                            location['text_snippet'] = f"{snippet} (位置)"
+                    else:
+                        # 如果没有text_snippet，使用region_description或默认值
+                        location['text_snippet'] = location.get('region_description', '问题位置')[:200]
+                    
+                    # 确保有region_description
+                    if 'region_description' not in location:
+                        location['region_description'] = f"第{location['page']}页"
+                    
+                    v_dict['location'] = location
+            else:
+                # 如果完全没有location，创建一个默认的
+                logger.warning(f"violation缺少location字段，使用默认值")
+                v_dict['location'] = {
+                    'page': 1,
+                    'text_snippet': '未指定位置',
+                    'region_description': '文档中'
+                }
+            
+            # 确保有points_deducted字段
+            if 'points_deducted' not in v_dict:
+                v_dict['points_deducted'] = 1
+            
+            return v_dict
+            
+        except Exception as e:
+            logger.error(f"清洗violation数据时出错: {e}, 数据: {v_dict}")
+            return None
     
     def _clean_json_response(self, content: str) -> str:
         """
