@@ -23,6 +23,22 @@ class PDFAnnotator:
     def __init__(self):
         pass
     
+    def _format_annotation_title(self, violation: Violation, num: int) -> str:
+        """格式化批注标题,让评委一眼看懂"""
+        # 提取问题描述(去掉修改建议部分)
+        if "→" in violation.finding:
+            problem = violation.finding.split("→")[0].strip()
+        elif "应为" in violation.finding:
+            problem = violation.finding.split("应为")[0].strip()
+        else:
+            problem = violation.finding
+        
+        # 截取前25个字符
+        short_problem = problem[:25] + "..." if len(problem) > 25 else problem
+        
+        # 组装标题: 序号 + 扣分 + 问题
+        return f"#{num} (-{violation.points_deducted}分) {short_problem}"
+    
     def annotate_pdf(
         self,
         pdf_path: str,
@@ -112,7 +128,7 @@ class PDFAnnotator:
             # 使用详细的批注内容
             annotation_content = self._format_annotation_content(violation, violation_num)
             highlight.set_info(
-                title=f"问题 #{violation_num} [{violation.severity.upper()}]",
+                title=self._format_annotation_title(violation, violation_num),
                 content=annotation_content
             )
             highlight.update()
@@ -122,7 +138,7 @@ class PDFAnnotator:
             note = page.add_text_annot(point, f"💡{violation_num}")
             note.set_colors(stroke=color)
             note.set_info(
-                title=f"[{violation.severity.upper()}] {violation.rule_id}",
+                title=self._format_annotation_title(violation, violation_num),
                 content=annotation_content
             )
             note.update()
@@ -188,7 +204,7 @@ class PDFAnnotator:
         note = page.add_text_annot(point, f"问题 #{violation_num}")
         note.set_colors(stroke=color)
         note.set_info(
-            title=f"[{violation.severity.upper()}] {violation.rule_id}",
+            title=self._format_annotation_title(violation, violation_num),
             content=annotation_content
         )
         note.update()
@@ -283,7 +299,7 @@ class PDFAnnotator:
                     note = page.add_text_annot(marker_point, f"⚠️{violation_num}")
                     note.set_colors(stroke=color)
                     note.set_info(
-                        title=f"图片问题 #{violation_num}",
+                        title=self._format_annotation_title(violation, violation_num),
                         content=annotation_content
                     )
                     note.update()
@@ -301,7 +317,7 @@ class PDFAnnotator:
         note = page.add_text_annot(center_point, f"⚠️图片问题 #{violation_num}")
         note.set_colors(stroke=color)
         note.set_info(
-            title=f"图片问题 #{violation_num}",
+            title=self._format_annotation_title(violation, violation_num),
             content=annotation_content
         )
         note.update()
