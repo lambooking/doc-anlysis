@@ -239,21 +239,20 @@ class PDFAnnotator:
             problem = finding
             suggestion = "请参考相关规范进行修正"
         
-        content = f"""【问题描述】
-{problem}
-
-【严重程度】
-{self._severity_label(violation.severity)}
-
-【扣分】
-{violation.points_deducted} 分
-
-【修改建议】
-{suggestion}
-
-【规则ID】
-{violation.rule_id}
-"""
+        # ✅ 使用 \n 而不是三引号字符串
+        content = (
+            f"【问题描述】\n"
+            f"{problem}\n\n"
+            f"【严重程度】\n"
+            f"{self._severity_label(violation.severity)}\n\n"
+            f"【扣分】\n"
+            f"{violation.points_deducted} 分\n\n"
+            f"【修改建议】\n"
+            f"{suggestion}\n\n"
+            f"【规则ID】\n"
+            f"{violation.rule_id}"
+        )
+        
         return content
     
     def _severity_label(self, severity: str) -> str:
