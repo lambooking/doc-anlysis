@@ -480,13 +480,41 @@ class LayeredAuditor:
             )
             
             content = response.choices[0].message.content
+            
+            # 清理响应内容：去除markdown代码块标记
+            content = self._clean_json_response(content)
+            
             result = AuditResult.model_validate_json(content)
             
             return result.violations
             
         except Exception as e:
             logger.error(f"VLM调用失败: {e}")
+            logger.debug(f"原始响应内容: {content[:500] if 'content' in locals() else 'N/A'}")
             return []
+    
+    def _clean_json_response(self, content: str) -> str:
+        """
+        清理VLM响应内容，去除markdown代码块标记
+        
+        处理以下情况：
+        - ```json\n{...}\n```
+        - ```\n{...}\n```
+        - {..}
+        """
+        content = content.strip()
+        
+        # 去除开头的```json或```
+        if content.startswith('```json'):
+            content = content[7:].strip()
+        elif content.startswith('```'):
+            content = content[3:].strip()
+        
+        # 去除结尾的```
+        if content.endswith('```'):
+            content = content[:-3].strip()
+        
+        return content
     
     def _build_audit_result(self, violations: List[Violation]) -> AuditResult:
         """构建最终审核结果"""

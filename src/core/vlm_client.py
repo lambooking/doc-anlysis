@@ -431,6 +431,9 @@ class VLMClient:
             content = response.choices[0].message.content
             logger.debug(f"VLM 响应: {content[:200]}...")
             
+            # 清理响应内容：去除markdown代码块标记
+            content = self._clean_json_response(content)
+            
             # 验证并解析 JSON
             result = AuditResult.model_validate_json(content)
             
@@ -446,6 +449,29 @@ class VLMClient:
                 final_score=100,
                 passed=True
             )
+    
+    def _clean_json_response(self, content: str) -> str:
+        """
+        清理VLM响应内容，去除markdown代码块标记
+        
+        处理以下情况：
+        - ```json\n{...}\n```
+        - ```\n{...}\n```
+        - {...}
+        """
+        content = content.strip()
+        
+        # 去除开头的```json或```
+        if content.startswith('```json'):
+            content = content[7:].strip()
+        elif content.startswith('```'):
+            content = content[3:].strip()
+        
+        # 去除结尾的```
+        if content.endswith('```'):
+            content = content[:-3].strip()
+        
+        return content
     
     def retry_with_backoff(
         self,
