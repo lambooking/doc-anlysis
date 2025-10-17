@@ -2,17 +2,26 @@
 
 ## 问题描述
 
-VLM返回的JSON被包裹在markdown代码块中（如 ` ```json\n{...}\n``` `），导致Pydantic解析失败。
+VLM返回的JSON存在两个问题：
+
+1. **被包裹在markdown代码块中**（如 ` ```json\n{...}\n``` `）
+2. **返回格式不一致**：有时返回violations数组`[{...}]`，有时返回完整对象`{"violations": [...], ...}`
 
 错误信息：
 ```
+# 问题1: markdown代码块
 Invalid JSON: expected value at line 1 column 1
 input_value='```json\n[...]\n```'
+
+# 问题2: 格式不匹配
+Input should be an object [type=model_type, input_value=[{...}], input_type=list]
 ```
 
 ## 解决方案
 
-在两个文件中添加JSON响应清理函数，在解析前去除markdown代码块标记。
+在两个文件中：
+1. 添加JSON响应清理函数，去除markdown代码块标记
+2. 兼容处理两种返回格式（数组或完整对象）
 
 ## 需要修改的文件
 

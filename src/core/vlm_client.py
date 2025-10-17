@@ -434,13 +434,39 @@ class VLMClient:
             # 清理响应内容：去除markdown代码块标记
             content = self._clean_json_response(content)
             
-            # 验证并解析 JSON
-            result = AuditResult.model_validate_json(content)
+            # 解析JSON
+            parsed = json.loads(content)
             
-            return result
+            # VLM可能直接返回violations数组，也可能返回完整的AuditResult对象
+            if isinstance(parsed, list):
+                # 直接返回的是violations数组，需要构建完整的AuditResult
+                from ..models.schemas import Violation
+                violations = [Violation(**v) for v in parsed]
+                total_deductions = sum(v.points_deducted for v in violations)
+                final_score = max(0, 100 - total_deductions)
+                result = AuditResult(
+                    violations=violations,
+                    total_deductions=total_deductions,
+                    final_score=final_score,
+                    passed=final_score >= 60
+                )
+                return result
+            elif isinstance(parsed, dict):
+                # 返回的是完整对象
+                result = AuditResult(**parsed)
+                return result
+            else:
+                logger.warning(f"未预期的响应格式: {type(parsed)}")
+                return AuditResult(
+                    violations=[],
+                    total_deductions=0,
+                    final_score=100,
+                    passed=True
+                )
             
         except Exception as e:
             logger.error(f"VLM API 调用异常: {e}")
+            logger.debug(f"原始响应内容: {content[:500] if 'content' in locals() else 'N/A'}")
             
             # 返回空结果（降级方案）
             return AuditResult(

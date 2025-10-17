@@ -484,9 +484,23 @@ class LayeredAuditor:
             # 清理响应内容：去除markdown代码块标记
             content = self._clean_json_response(content)
             
-            result = AuditResult.model_validate_json(content)
+            # 解析JSON
+            import json
+            parsed = json.loads(content)
             
-            return result.violations
+            # VLM可能直接返回violations数组，也可能返回完整的AuditResult对象
+            if isinstance(parsed, list):
+                # 直接返回的是violations数组
+                from ..models.schemas import Violation
+                violations = [Violation(**v) for v in parsed]
+                return violations
+            elif isinstance(parsed, dict):
+                # 返回的是完整对象
+                result = AuditResult(**parsed)
+                return result.violations
+            else:
+                logger.warning(f"未预期的响应格式: {type(parsed)}")
+                return []
             
         except Exception as e:
             logger.error(f"VLM调用失败: {e}")
