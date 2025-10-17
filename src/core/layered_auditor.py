@@ -110,13 +110,25 @@ class LayeredAuditor:
 4. 是否缺少关键章节
 
 ## 输出格式
-仅报告发现的结构性问题，使用JSON格式。如果没有问题，返回空的violations列表。
-每个问题必须包含：
-- rule_id: 对应的检查点ID（如toc_01, num_01, logic_01）
-- severity: 严重程度
-- finding: 具体问题描述
-- location: 包含page（估算页码）、text_snippet（章节标题）、region_description
-- points_deducted: 扣分
+只返回 violations 数组，不要其他字段：
+
+{{
+  "violations": [
+    {{
+      "rule_id": "toc_01",
+      "severity": "medium",
+      "finding": "具体问题描述 → 修改建议",
+      "location": {{
+        "page": 1,
+        "text_snippet": "章节标题原文（20-50字）",
+        "region_description": "第X页，目录部分"
+      }},
+      "points_deducted": 2
+    }}
+  ]
+}}
+
+⚠️ 不要包含 total_deductions, final_score, passed 等字段
 """
         
         logger.info("  → 调用VLM进行结构分析...")
@@ -309,7 +321,7 @@ class LayeredAuditor:
    ✅ 正确："[第5页影像图]"
 
 ## 输出格式
-返回 JSON 格式的violations列表：
+只返回 violations 数组：
 
 {{
   "violations": [
@@ -326,6 +338,8 @@ class LayeredAuditor:
     }}
   ]
 }}
+
+⚠️ 不要包含 total_deductions, final_score, passed 等字段
 
 ## ⚠️ 验证清单（VLM 自查）
 发送 JSON 前，请检查每个 violation：
@@ -401,13 +415,25 @@ class LayeredAuditor:
    - 引用内容是否与被引用内容一致
 
 ## 输出格式
-仅报告不一致的问题，返回JSON格式的violations列表。
-每个violation必须包含：
-- rule_id: term_02（术语统一性）或 logic_02（前后矛盾）等
-- severity: 严重程度
-- finding: 具体的不一致问题 → 修改建议
-- location: 包含page、text_snippet、region_description
-- points_deducted: 扣分
+只返回 violations 数组：
+
+{{
+  "violations": [
+    {{
+      "rule_id": "term_02",
+      "severity": "medium",
+      "finding": "术语使用不统一：'管理处'和'分公司'混用 → 统一使用'管理处'",
+      "location": {{
+        "page": 5,
+        "text_snippet": "原文中包含不一致术语的文本片段（20-50字）",
+        "region_description": "第5页，第3章"
+      }},
+      "points_deducted": 2
+    }}
+  ]
+}}
+
+⚠️ 不要包含 total_deductions, final_score, passed 等字段
 """
         
         logger.info("  → 调用VLM进行一致性分析...")
@@ -462,19 +488,22 @@ class LayeredAuditor:
     async def _call_vlm_simple(
         self,
         prompt: str,
-        scenario_id: str
+        scenario_id: str,
+        images: Optional[List[Dict[str, Any]]] = None
     ) -> List[Violation]:
         """
-        简化的VLM调用（不带图片）
+        简化的VLM调用
         
         Args:
             prompt: 审核prompt
             scenario_id: 场景ID
+            images: 可选的图片列表
         
         Returns:
             violations列表
         """
         from openai import OpenAI
+        import json
         
         client = OpenAI(
             base_url=self.vlm_client.config.vllm_base_url,
@@ -517,42 +546,47 @@ class LayeredAuditor:
             content = self._clean_json_response(content)
             
             # 解析JSON
-            import json
-            parsed = json.loads(content)
-            
-            # VLM可能直接返回violations数组，也可能返回完整的AuditResult对象
-            if isinstance(parsed, list):
-                # 直接返回的是violations数组
-                from ..models.schemas import Violation
-                violations = []
-                for v_dict in parsed:
-                    # 修复和清洗violation数据
-                    v_dict = self._sanitize_violation(v_dict)
-                    if v_dict:  # 只添加有效的violation
-                        try:
-                            violations.append(Violation(**v_dict))
-                        except Exception as e:
-                            logger.warning(f"无法解析violation: {e}, 数据: {v_dict}")
-                            continue
-                return violations
-            elif isinstance(parsed, dict):
-                # 返回的是完整对象
-                result = AuditResult(**parsed)
-                # 同样修复violations中的text_snippet
-                for v in result.violations:
-                    if len(v.location.text_snippet) < 10:
-                        v.location.text_snippet = f"{v.location.text_snippet} (问题位置)"
-                return result.violations
-            else:
-                logger.warning(f"未预期的响应格式: {type(parsed)}")
+            try:
+                data = json.loads(content)
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON 解析失败: {e}")
                 return []
+            
+            # ===== 关键修复：处理多种返回格式 =====
+            violations_data = []
+            
+            # 格式1: {"violations": [...]}
+            if isinstance(data, dict) and 'violations' in data:
+                violations_data = data['violations']
+            # 格式2: 直接是列表 [...]
+            elif isinstance(data, list):
+                violations_data = data
+            # 格式3: 完整 AuditResult (向后兼容)
+            elif isinstance(data, dict) and 'total_deductions' in data:
+                violations_data = data.get('violations', [])
+            else:
+                logger.warning(f"未知返回格式")
+                return []
+            
+            # 清洗并创建 Violation 对象
+            violations = []
+            for v_dict in violations_data:
+                cleaned = self._clean_violation(v_dict)
+                if cleaned:
+                    try:
+                        violation = Violation(**cleaned)
+                        violations.append(violation)
+                    except Exception as e:
+                        logger.warning(f"创建 Violation 失败: {e}")
+            
+            return violations
             
         except Exception as e:
             logger.error(f"VLM调用失败: {e}")
             logger.debug(f"原始响应内容: {content[:500] if 'content' in locals() else 'N/A'}")
             return []
     
-    def _sanitize_violation(self, v_dict: dict) -> dict:
+    def _clean_violation(self, v_dict: dict) -> dict:
         """
         清洗和验证 violation 数据（增强版）
         
