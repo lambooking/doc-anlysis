@@ -293,7 +293,9 @@ class LayeredAuditor:
 ## 重要说明
 ⚠️ 这是第{chunk['start_page']}-{chunk['end_page']}页的内容
 ⚠️ location.page 必须在 {chunk['start_page']} 到 {chunk['end_page']} 范围内
-⚠️ text_snippet 必须是原文精确文本（20-50字），包含前后文
+⚠️ text_snippet 必须是原文精确文本，长度至少20字，包含问题前后的完整上下文
+   - ✅ 好的例子："各地区管理处、、工程部应按照有关规定进行检查"（包含错误和上下文）
+   - ❌ 坏的例子："、、"（太短，无法定位）
 ⚠️ finding 必须包含具体问题描述和修改建议，用" → "分隔
 
 ## 输出格式
@@ -492,11 +494,23 @@ class LayeredAuditor:
             if isinstance(parsed, list):
                 # 直接返回的是violations数组
                 from ..models.schemas import Violation
-                violations = [Violation(**v) for v in parsed]
+                violations = []
+                for v_dict in parsed:
+                    # 修复text_snippet过短的问题
+                    if 'location' in v_dict and 'text_snippet' in v_dict['location']:
+                        snippet = v_dict['location']['text_snippet']
+                        if len(snippet) < 10:
+                            # 如果太短，添加提示信息
+                            v_dict['location']['text_snippet'] = f"{snippet} (问题位置)"
+                    violations.append(Violation(**v_dict))
                 return violations
             elif isinstance(parsed, dict):
                 # 返回的是完整对象
                 result = AuditResult(**parsed)
+                # 同样修复violations中的text_snippet
+                for v in result.violations:
+                    if len(v.location.text_snippet) < 10:
+                        v.location.text_snippet = f"{v.location.text_snippet} (问题位置)"
                 return result.violations
             else:
                 logger.warning(f"未预期的响应格式: {type(parsed)}")

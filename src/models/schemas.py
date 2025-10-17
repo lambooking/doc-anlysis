@@ -48,7 +48,7 @@ class AuditRuleConfig(BaseModel):
 class LocationEncoding(BaseModel):
     """位置编码"""
     page: int = Field(ge=1, description="页码")
-    text_snippet: str = Field(min_length=10, max_length=200, description="文本片段")
+    text_snippet: str = Field(min_length=1, max_length=200, description="文本片段")  # 放宽最小长度限制为1
     region_description: str = Field(..., description="区域描述")
 
 

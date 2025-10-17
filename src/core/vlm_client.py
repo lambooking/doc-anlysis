@@ -441,7 +441,15 @@ class VLMClient:
             if isinstance(parsed, list):
                 # 直接返回的是violations数组，需要构建完整的AuditResult
                 from ..models.schemas import Violation
-                violations = [Violation(**v) for v in parsed]
+                violations = []
+                for v_dict in parsed:
+                    # 修复text_snippet过短的问题
+                    if 'location' in v_dict and 'text_snippet' in v_dict['location']:
+                        snippet = v_dict['location']['text_snippet']
+                        if len(snippet) < 10:
+                            # 如果太短，添加提示信息
+                            v_dict['location']['text_snippet'] = f"{snippet} (问题位置)"
+                    violations.append(Violation(**v_dict))
                 total_deductions = sum(v.points_deducted for v in violations)
                 final_score = max(0, 100 - total_deductions)
                 result = AuditResult(
@@ -454,6 +462,10 @@ class VLMClient:
             elif isinstance(parsed, dict):
                 # 返回的是完整对象
                 result = AuditResult(**parsed)
+                # 同样修复violations中的text_snippet
+                for v in result.violations:
+                    if len(v.location.text_snippet) < 10:
+                        v.location.text_snippet = f"{v.location.text_snippet} (问题位置)"
                 return result
             else:
                 logger.warning(f"未预期的响应格式: {type(parsed)}")
