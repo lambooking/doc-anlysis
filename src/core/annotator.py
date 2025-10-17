@@ -239,29 +239,33 @@ class PDFAnnotator:
             problem = finding
             suggestion = "请参考相关规范进行修正"
         
-        # ✅ 使用 \n 而不是三引号字符串
+        # 简化严重程度标签
+        severity_map = {
+            'critical': '关键',
+            'high': '高',
+            'medium': '中',
+            'low': '低'
+        }
+        severity_text = severity_map.get(violation.severity, violation.severity)
+        
+        # ✅ 极简格式，不使用特殊字符
         content = (
-            f"【问题描述】\n"
-            f"{problem}\n\n"
-            f"【严重程度】\n"
-            f"{self._severity_label(violation.severity)}\n\n"
-            f"【扣分】\n"
-            f"{violation.points_deducted} 分\n\n"
-            f"【修改建议】\n"
-            f"{suggestion}\n\n"
-            f"【规则ID】\n"
-            f"{violation.rule_id}"
+            f"问题: {problem}\n\n"
+            f"级别: {severity_text}优先级\n\n"
+            f"扣分: {violation.points_deducted}分\n\n"
+            f"建议: {suggestion}\n\n"
+            f"规则: {violation.rule_id}"
         )
         
         return content
     
     def _severity_label(self, severity: str) -> str:
-        """严重程度标签"""
+        """严重程度标签（简化版）"""
         labels = {
-            'critical': '🔴 关键问题（必须立即修改）',
-            'high': '🟠 高优先级（建议优先修改）',
-            'medium': '🟡 中优先级（建议修改）',
-            'low': '🟢 低优先级（可择机优化）'
+            'critical': '关键',
+            'high': '高',
+            'medium': '中',
+            'low': '低'
         }
         return labels.get(severity, severity)
     
