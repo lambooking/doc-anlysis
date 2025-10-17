@@ -268,44 +268,74 @@ class LayeredAuditor:
         async with semaphore:
             logger.info(f"    → 审核块 {chunk_idx+1}: 第{chunk['start_page']}-{chunk['end_page']}页...")
             
-            # 构建针对该块的prompt
+            # 构建针对该块的prompt（增强版）
             chunk_prompt = f"""请审核以下文档片段（第{chunk['start_page']}-{chunk['end_page']}页）。
 
-## 文档片段内容
+## 审核内容
 {chunk['text']}
 
-## 审核重点
-1. **语法检查**：
-   - 标点符号错误（逗号重复、括号不匹配、句号缺失）
-   - 语句不通顺（病句、歧义句、不完整句）
-   - 专业术语拼写错误或不统一
+## 审核要点
+1. **语法检查**：标点符号、病句、术语拼写
+2. **逻辑检查**：上下文连贯、时间顺序、前后矛盾
+3. **内容检查**：操作步骤完整性、安全注意事项
 
-2. **逻辑检查**：
-   - 上下文是否连贯
-   - 时间顺序是否合理
-   - 前后是否矛盾
+## ⚠️ CRITICAL: text_snippet 要求
+这是最重要的要求，必须严格遵守：
 
-3. **内容检查**：
-   - 操作步骤是否完整清晰
-   - 安全注意事项是否充分
-   - 关键步骤是否缺失
+1. **必须是原文精确文本**，不是问题描述！
+   ✅ 正确："各地区管理处、、工程部应按照有关规定"（原文，包含错误）
+   ❌ 错误："标点符号重复"（这是问题描述）
+   ❌ 错误："- 9 - (位置)"（这是页码）
+   ❌ 错误："应急步骤顺序不合理"（这是评价）
 
-## 重要说明
-⚠️ 这是第{chunk['start_page']}-{chunk['end_page']}页的内容
-⚠️ location.page 必须在 {chunk['start_page']} 到 {chunk['end_page']} 范围内
-⚠️ text_snippet 必须是原文精确文本，长度至少20字，包含问题前后的完整上下文
-   - ✅ 好的例子："各地区管理处、、工程部应按照有关规定进行检查"（包含错误和上下文）
-   - ❌ 坏的例子："、、"（太短，无法定位）
-⚠️ finding 必须包含具体问题描述和修改建议，用" → "分隔
+2. **长度要求：至少 20 个字符，最多 150 个字符**
+   - 太短：无法定位（如 "LZC 支线"）
+   - 太长：影响性能
+
+3. **必须包含错误前后的上下文**
+   ✅ 正确："管理处、、工程部"（完整错误+上下文）
+   ❌ 错误："、、"（只有错误，无法定位）
+
+4. **不要包含任何标记**
+   ❌ 错误："LZC 支线 (位置)"
+   ❌ 错误："- 9 -"
+   ❌ 错误："第4页: ## 前  言"
+   ✅ 正确："LZC 支线沿线经过多个乡镇"
+
+5. **如果是表格问题，摘录表格中的文字**
+   ✅ 正确："站场名称    坐标    备注"
+
+6. **如果是图片问题，用格式：[第X页图片]**
+   ✅ 正确："[第5页影像图]"
 
 ## 输出格式
-返回JSON格式的violations列表。如果没有问题，返回空列表。
-每个violation必须包含：
-- rule_id: 对应的规则ID
-- severity: 严重程度
-- finding: 问题描述 → 修改建议
-- location: {{page, text_snippet, region_description}}
-- points_deducted: 扣分
+返回 JSON 格式的violations列表：
+
+{{
+  "violations": [
+    {{
+      "rule_id": "punctuation_01",
+      "severity": "low",
+      "finding": "标点符号重复：逗号连续出现两次 → 删除多余的逗号",
+      "location": {{
+        "page": {chunk['start_page']},
+        "text_snippet": "各地区管理处、、工程部应按照有关规定进行检查",
+        "region_description": "第{chunk['start_page']}页，第2章第3节"
+      }},
+      "points_deducted": 1
+    }}
+  ]
+}}
+
+## ⚠️ 验证清单（VLM 自查）
+发送 JSON 前，请检查每个 violation：
+□ text_snippet 是原文吗？（不是问题描述）
+□ text_snippet 长度在 20-150 字符之间吗？
+□ text_snippet 包含足够上下文吗？
+□ text_snippet 没有 "(位置)" 等标记吗？
+□ page 在 {chunk['start_page']}-{chunk['end_page']} 范围内吗？
+
+如果任何一项不符合，修改后再输出！
 """
             
             try:
@@ -524,78 +554,113 @@ class LayeredAuditor:
     
     def _sanitize_violation(self, v_dict: dict) -> dict:
         """
-        清洗和修复violation数据
+        清洗和验证 violation 数据（增强版）
         
-        处理VLM返回数据不规范的问题：
-        - location是字符串而不是对象
-        - text_snippet过长或过短
-        - 缺少必需字段
+        过滤条件：
+        1. text_snippet 太短（< 15 字符）
+        2. text_snippet 包含无效标记
+        3. text_snippet 是页码列表
+        4. 必需字段缺失
         """
         try:
-            # 检查必需字段
-            if 'rule_id' not in v_dict or 'severity' not in v_dict or 'finding' not in v_dict:
-                logger.warning(f"violation缺少必需字段，跳过: {v_dict}")
-                return None
+            # 1. 检查必需字段
+            required_fields = ['rule_id', 'severity', 'finding']
+            for field in required_fields:
+                if field not in v_dict:
+                    logger.warning(f"violation缺少必需字段: {field}")
+                    return None
             
-            # 修复location字段
+            # 2. 处理 location 字段
             if 'location' in v_dict:
                 location = v_dict['location']
                 
-                # 如果location是字符串，尝试构建location对象
+                # 如果 location 是字符串，尝试解析
                 if isinstance(location, str):
-                    logger.warning(f"location是字符串，尝试修复: {location}")
-                    # 尝试从字符串中提取页码
+                    logger.debug(f"location 是字符串，尝试修复: {location[:50]}")
+                    
+                    # 提取页码
                     import re
                     page_match = re.search(r'第?(\d+)页', location)
                     page = int(page_match.group(1)) if page_match else 1
                     
-                    v_dict['location'] = {
+                    location = {
                         'page': page,
-                        'text_snippet': location[:200],  # 截断到200字符
-                        'region_description': location
+                        'text_snippet': location[:100],
+                        'region_description': f"第{page}页"
                     }
+                    v_dict['location'] = location
                 
-                # 如果location是字典，修复其中的字段
-                elif isinstance(location, dict):
-                    # 确保有page字段
+                # 验证 location 对象
+                if isinstance(location, dict):
+                    # 确保有 page
                     if 'page' not in location:
                         location['page'] = 1
                     
-                    # 修复text_snippet
-                    if 'text_snippet' in location:
-                        snippet = location['text_snippet']
-                        # 截断过长的snippet
-                        if len(snippet) > 200:
-                            location['text_snippet'] = snippet[:197] + '...'
-                        # 补充过短的snippet
-                        elif len(snippet) < 10:
-                            location['text_snippet'] = f"{snippet} (位置)"
-                    else:
-                        # 如果没有text_snippet，使用region_description或默认值
-                        location['text_snippet'] = location.get('region_description', '问题位置')[:200]
+                    # ===== 关键：验证和清洗 text_snippet =====
+                    snippet = location.get('text_snippet', '')
                     
-                    # 确保有region_description
+                    # 验证1：长度检查
+                    if len(snippet) < 15:
+                        logger.warning(f"❌ 过滤：text_snippet 太短（{len(snippet)}字符）: {snippet}")
+                        return None
+                    
+                    # 验证2：检查无效标记
+                    invalid_markers = ['(位置)', '(问题)', '[问题]', '错误：', '建议：']
+                    if any(marker in snippet for marker in invalid_markers):
+                        logger.warning(f"❌ 过滤：text_snippet 包含无效标记: {snippet[:50]}")
+                        return None
+                    
+                    # 验证3：检查是否是页码列表
+                    if snippet.count('第') > 2 and snippet.count('页') > 2:
+                        logger.warning(f"❌ 过滤：text_snippet 是页码列表: {snippet[:50]}")
+                        return None
+                    
+                    # 验证4：检查是否是 Markdown 标题
+                    if snippet.strip().startswith('##') or snippet.strip().startswith('#'):
+                        logger.warning(f"❌ 过滤：text_snippet 是 Markdown 标题: {snippet[:50]}")
+                        return None
+                    
+                    # 验证5：检查是否只是页码标记
+                    import re
+                    if re.match(r'^[\s\-\d]+$', snippet.strip()):
+                        logger.warning(f"❌ 过滤：text_snippet 只是页码: {snippet}")
+                        return None
+                    
+                    # 验证6：检查是否是问题描述而非原文
+                    problem_keywords = ['不合理', '不完整', '缺失', '错误', '问题', '建议']
+                    if any(keyword in snippet for keyword in problem_keywords) and len(snippet) < 30:
+                        logger.warning(f"❌ 过滤：text_snippet 疑似问题描述: {snippet}")
+                        return None
+                    
+                    # 清洗：去除可能的标记
+                    snippet = snippet.replace('(位置)', '').strip()
+                    location['text_snippet'] = snippet[:200]  # 限制长度
+                    
+                    # 确保有 region_description
                     if 'region_description' not in location:
                         location['region_description'] = f"第{location['page']}页"
                     
                     v_dict['location'] = location
             else:
-                # 如果完全没有location，创建一个默认的
-                logger.warning(f"violation缺少location字段，使用默认值")
+                # 完全没有 location，使用默认值
+                logger.warning(f"violation 缺少 location 字段")
                 v_dict['location'] = {
                     'page': 1,
-                    'text_snippet': '未指定位置',
+                    'text_snippet': v_dict.get('finding', '未指定位置')[:50],
                     'region_description': '文档中'
                 }
             
-            # 确保有points_deducted字段
+            # 3. 确保有 points_deducted
             if 'points_deducted' not in v_dict:
                 v_dict['points_deducted'] = 1
+            
+            # 4. 限制 points_deducted 最大值（保险措施）
+            v_dict['points_deducted'] = min(v_dict['points_deducted'], 5)
             
             return v_dict
             
         except Exception as e:
-            logger.error(f"清洗violation数据时出错: {e}, 数据: {v_dict}")
+            logger.error(f"清洗 violation 时出错: {e}, 数据: {str(v_dict)[:100]}")
             return None
     
     def _clean_json_response(self, content: str) -> str:
@@ -622,8 +687,17 @@ class LayeredAuditor:
         return content
     
     def _build_audit_result(self, violations: List[Violation]) -> AuditResult:
-        """构建最终审核结果"""
+        """构建最终审核结果（增加保护）"""
+        
+        # 计算总扣分
         total_deductions = sum(v.points_deducted for v in violations)
+        
+        # ⚠️ 保护措施：扣分上限
+        MAX_TOTAL_DEDUCTIONS = 80  # 最多扣 80 分
+        if total_deductions > MAX_TOTAL_DEDUCTIONS:
+            logger.warning(f"⚠️ 总扣分 {total_deductions} 超过上限 {MAX_TOTAL_DEDUCTIONS}，已限制")
+            total_deductions = MAX_TOTAL_DEDUCTIONS
+        
         final_score = max(0, 100 - total_deductions)
         passed = final_score >= 60
         
