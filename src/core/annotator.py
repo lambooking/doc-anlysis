@@ -26,9 +26,16 @@ class PDFAnnotator:
     FREETEXT_MAX_HEIGHT = 240
     FREETEXT_FONT_SIZE = 9
     ENABLE_HIGHLIGHT = True
+    SIDEBAR_WIDTH = 220
+    SIDEBAR_MARGIN = 10
+    SIDEBAR_TOP = 40
+    SIDEBAR_LINE_GAP = 6
     
     def __init__(self):
-        pass
+        # 每页边栏的纵向游标（用于栈式排布）
+        self._sidebar_y_by_page = {}
+        # 过滤掉不需要的规则前缀
+        self.SKIP_RULE_PREFIXES = ("punctuation_",)
     
     def _format_annotation_title(self, violation: Violation, num: int) -> str:
         """格式化批注标题,让评委一眼看懂"""
@@ -72,6 +79,9 @@ class PDFAnnotator:
         # 为每个违规添加批注
         for idx, violation in enumerate(audit_result.violations):
             try:
+                # 过滤不需要标注的规则（如标点）
+                if self._should_skip_violation(violation):
+                    continue
                 self._add_violation_annotation(
                     doc, 
                     violation, 
@@ -155,8 +165,8 @@ class PDFAnnotator:
             note.set_info(title=annotation_title, content=annotation_content, subject=annotation_title)
             note.update()
 
-            # 在文本右侧添加可见 FreeText 注释（WPS / 浏览器兼容）
-            self._add_freetext_annotation(
+            # 将正文内容写入“右侧边栏”，并画连线
+            self._add_sidebar_annotation(
                 page=page,
                 anchor_rect=rect,
                 title=annotation_title,
@@ -229,8 +239,8 @@ class PDFAnnotator:
         x0 = x1 - anchor_width
         anchor_rect = pymupdf.Rect(x0, y_offset, x1, y_offset + 20)
 
-        # 放置可见 FreeText 注释
-        self._add_freetext_annotation(
+        # 写入边栏
+        self._add_sidebar_annotation(
             page=page,
             anchor_rect=anchor_rect,
             title=annotation_title,
@@ -344,8 +354,8 @@ class PDFAnnotator:
                     # 3. 添加边框高亮图片区域
                     page.draw_rect(img_rect, color=color, width=2)
 
-                    # 4. 为图片添加可见 FreeText 注释
-                    self._add_freetext_annotation(
+                    # 4. 为图片添加边栏说明
+                    self._add_sidebar_annotation(
                         page=page,
                         anchor_rect=img_rect,
                         title=annotation_title,
@@ -365,9 +375,9 @@ class PDFAnnotator:
         note.set_info(title=annotation_title, content=annotation_content, subject=annotation_title)
         note.update()
 
-        # 使用一个合成的锚点矩形放置 FreeText
+        # 使用一个合成的锚点矩形写入边栏
         anchor_rect = pymupdf.Rect(center_point.x, center_point.y, center_point.x + 10, center_point.y + 20)
-        self._add_freetext_annotation(
+        self._add_sidebar_annotation(
             page=page,
             anchor_rect=anchor_rect,
             title=annotation_title,
@@ -450,6 +460,71 @@ class PDFAnnotator:
         if len(clean_content) > max_chars:
             clean_content = clean_content[:max_chars] + "..."
         return f"{title}\n\n{clean_content}"
+
+    def _get_sidebar_rect(self, page: pymupdf.Page) -> pymupdf.Rect:
+        """返回本页右侧边栏矩形区域。若右侧放不下时尝试左侧。"""
+        page_rect = page.rect
+        right_x0 = page_rect.x1 - self.SIDEBAR_MARGIN - self.SIDEBAR_WIDTH
+        right_x1 = page_rect.x1 - self.SIDEBAR_MARGIN
+        if right_x0 > page_rect.x0 + self.SIDEBAR_MARGIN:
+            return pymupdf.Rect(right_x0, self.SIDEBAR_TOP, right_x1, page_rect.y1 - self.SIDEBAR_MARGIN)
+        # 退化到左侧边栏
+        left_x0 = page_rect.x0 + self.SIDEBAR_MARGIN
+        left_x1 = left_x0 + self.SIDEBAR_WIDTH
+        return pymupdf.Rect(left_x0, self.SIDEBAR_TOP, left_x1, page_rect.y1 - self.SIDEBAR_MARGIN)
+
+    def _add_sidebar_annotation(
+        self,
+        page: pymupdf.Page,
+        anchor_rect: pymupdf.Rect,
+        title: str,
+        content: str,
+        color: tuple
+    ) -> None:
+        """在页面右侧边栏区域追加一个 FreeText 区块，并用细线连接 anchor。"""
+        sidebar_rect = self._get_sidebar_rect(page)
+        page_id = id(page)
+        current_y = self._sidebar_y_by_page.get(page_id, sidebar_rect.y0)
+
+        payload = self._compose_freetext_payload(title, content)
+        est_lines = max(2, (len(payload) // 28) + 1)
+        box_h = min(max(self.FREETEXT_MIN_HEIGHT, est_lines * 14 + 20), self.FREETEXT_MAX_HEIGHT)
+
+        # 若空间不足则从顶部重新开始（简单分页策略）
+        if current_y + box_h + self.SIDEBAR_LINE_GAP > sidebar_rect.y1:
+            current_y = sidebar_rect.y0
+
+        box = pymupdf.Rect(sidebar_rect.x0, current_y, sidebar_rect.x1, current_y + box_h)
+        freetext = page.add_freetext_annot(
+            box, payload, fontsize=self.FREETEXT_FONT_SIZE, text_color=(0, 0, 0), fill_color=(1, 1, 1)
+        )
+        try:
+            freetext.set_border(width=0.7)
+        except Exception:
+            pass
+        freetext.set_colors(stroke=color, fill=(1, 1, 1))
+        try:
+            freetext.set_opacity(0.92)
+        except Exception:
+            pass
+        freetext.set_flags(pymupdf.ANNOT_FLAG_PRINT)
+        freetext.set_info(title=title, content=content, subject=title)
+        freetext.update()
+
+        # 连接线（从 anchor 到边栏框左边中点）
+        anchor_point = anchor_rect.top_right + pymupdf.Point(2, 2)
+        line_end = pymupdf.Point(box.x0, min(max(anchor_point.y, box.y0), box.y1))
+        try:
+            page.draw_line(anchor_point, line_end, color=color, width=0.6)
+        except Exception:
+            pass
+
+        self._sidebar_y_by_page[page_id] = box.y1 + self.SIDEBAR_LINE_GAP
+
+    def _should_skip_violation(self, violation: Violation) -> bool:
+        """根据规则前缀判断是否跳过该违规。"""
+        rule_id = violation.rule_id or ""
+        return any(rule_id.startswith(prefix) for prefix in self.SKIP_RULE_PREFIXES)
 
 
 class DocumentAnnotator:
