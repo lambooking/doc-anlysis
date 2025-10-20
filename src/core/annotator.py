@@ -74,10 +74,13 @@ class PDFAnnotator:
             except Exception as e:
                 logger.warning(f"添加批注失败 (违规 {idx + 1}): {e}")
         
-        # 保存
+        # 保存 - 使用完整保存模式确保批注被正确写入
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        doc.save(str(output_path))
+        # incremental=False: 完整保存而非增量保存，确保批注完整写入
+        # deflate=True: 压缩保存，减小文件大小
+        # garbage=4: 清理未使用对象
+        doc.save(str(output_path), incremental=False, deflate=True, garbage=4)
         doc.close()
         
         logger.info(f"批注添加完成，共 {len(audit_result.violations)} 处，保存到: {output_path}")
@@ -130,9 +133,9 @@ class PDFAnnotator:
             annotation_title = self._format_annotation_title(violation, violation_num)
             
             # 设置高亮批注的信息（使用 info 字典）
-            # 注意：PyMuPDF 使用 "contents" 而不是 "content"
+            # 注意：PyMuPDF 使用 "content" (单数)
             highlight.info["title"] = annotation_title
-            highlight.info["contents"] = annotation_content  # 使用 contents（复数）
+            highlight.info["content"] = annotation_content  # 使用 content（单数）
             highlight.info["subject"] = annotation_title
             highlight.update()
             
@@ -143,7 +146,7 @@ class PDFAnnotator:
             
             # 设置气泡批注的信息（使用 info 字典）
             note.info["title"] = annotation_title
-            note.info["contents"] = annotation_content  # 使用 contents（复数）
+            note.info["content"] = annotation_content  # 使用 content（单数）
             note.info["subject"] = annotation_title
             note.update()
             
@@ -198,20 +201,21 @@ class PDFAnnotator:
         violation: Violation,
         violation_num: int
     ):
-        """降级方案：在页面顶部添加文本批注"""
-        # 在页面右上角添加便签
-        point = pymupdf.Point(page.rect.width - 50, 50)
+        """降级方案：在页面右侧添加文本批注（避免重叠）"""
+        # 根据违规编号计算Y坐标,每个批注间隔60px避免重叠
+        y_offset = 50 + (violation_num - 1) * 60
+        point = pymupdf.Point(page.rect.width - 50, y_offset)
         color = self.SEVERITY_COLORS.get(violation.severity, (1, 1, 0))
         
         annotation_content = self._format_annotation_content(violation, violation_num)
         annotation_title = self._format_annotation_title(violation, violation_num)
         
-        note = page.add_text_annot(point, f"问题 #{violation_num}")
+        note = page.add_text_annot(point, f"Q{violation_num}")
         note.set_colors(stroke=color)
         
         # 使用 info 字典设置批注信息
         note.info["title"] = annotation_title
-        note.info["contents"] = annotation_content  # 使用 contents（复数）
+        note.info["content"] = annotation_content  # 使用 content（单数）
         note.info["subject"] = annotation_title
         note.update()
     
@@ -306,12 +310,12 @@ class PDFAnnotator:
                     
                     # 2. 在图片右上角添加醒目标记 - 去除表情符号
                     marker_point = img_rect.top_right + pymupdf.Point(5, 5)
-                    note = page.add_text_annot(marker_point, f"图片问题#{violation_num}")
+                    note = page.add_text_annot(marker_point, f"IMG{violation_num}")
                     note.set_colors(stroke=color)
                     
                     # 使用 info 字典设置批注信息
                     note.info["title"] = annotation_title
-                    note.info["contents"] = annotation_content  # 使用 contents（复数）
+                    note.info["content"] = annotation_content  # 使用 content（单数）
                     note.info["subject"] = annotation_title
                     note.update()
                     
@@ -325,12 +329,12 @@ class PDFAnnotator:
         
         # 如果无法定位图片，在页面中央添加批注
         center_point = pymupdf.Point(page.rect.width / 2, 100)
-        note = page.add_text_annot(center_point, f"图片问题 #{violation_num}")
+        note = page.add_text_annot(center_point, f"IMG{violation_num}")
         note.set_colors(stroke=color)
         
         # 使用 info 字典设置批注信息
         note.info["title"] = annotation_title
-        note.info["contents"] = annotation_content  # 使用 contents（复数）
+        note.info["content"] = annotation_content  # 使用 content（单数）
         note.info["subject"] = annotation_title
         note.update()
         
