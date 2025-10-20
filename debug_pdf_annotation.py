@@ -38,6 +38,14 @@ try:
                 print(f"    标题 (title): {repr(info.get('title', 'N/A'))}")
                 print(f"    内容 (content): {repr(info.get('content', 'N/A'))}")
                 print(f"    主题 (subject): {repr(info.get('subject', 'N/A'))}")
+
+                # FreeText 专属属性
+                if annot.type[1] == 'FreeText':
+                    try:
+                        rect = annot.rect
+                    except Exception:
+                        rect = None
+                    print(f"    FreeText 矩形: {rect}")
                 
                 # 显示前100个字符的内容
                 content = info.get('content', '')

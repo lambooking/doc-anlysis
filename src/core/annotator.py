@@ -20,6 +20,13 @@ class PDFAnnotator:
         'low': (0.5, 1, 0)          # 绿色
     }
     
+    # 可见 FreeText 注释的默认参数
+    FREETEXT_MAX_WIDTH = 220
+    FREETEXT_MIN_HEIGHT = 120
+    FREETEXT_MAX_HEIGHT = 240
+    FREETEXT_FONT_SIZE = 9
+    ENABLE_HIGHLIGHT = True
+    
     def __init__(self):
         pass
     
@@ -123,32 +130,39 @@ class PDFAnnotator:
             rect = rects[0]
             color = self.SEVERITY_COLORS.get(violation.severity, (1, 1, 0))
             
-            # 添加高亮
-            highlight = page.add_highlight_annot(rect)
-            highlight.set_colors(stroke=color)
-            highlight.set_opacity(0.5)
-            
+            # 添加高亮（可选）
+            highlight = None
+            if self.ENABLE_HIGHLIGHT:
+                highlight = page.add_highlight_annot(rect)
+                highlight.set_colors(stroke=color)
+                highlight.set_opacity(0.5)
+                
             # 使用详细的批注内容
             annotation_content = self._format_annotation_content(violation, violation_num)
             annotation_title = self._format_annotation_title(violation, violation_num)
             
-            # 设置高亮批注的信息（使用 info 字典）
-            # 注意：PyMuPDF 使用 "content" (单数)
-            highlight.info["title"] = annotation_title
-            highlight.info["content"] = annotation_content  # 使用 content（单数）
-            highlight.info["subject"] = annotation_title
-            highlight.update()
+            # 设置高亮批注的信息（统一使用 set_info，提升兼容性）
+            if highlight is not None:
+                highlight.set_info(title=annotation_title, content=annotation_content, subject=annotation_title)
+                highlight.update()
             
-            # 在旁边添加气泡标记（更显眼）- 去除表情符号
+            # 在旁边添加气泡标记（编号锚点）
             point = rect.top_right + pymupdf.Point(10, 0)  # 右侧10px
-            note = page.add_text_annot(point, f"#{violation_num}")
+            note = page.add_text_annot(point, f"Q{violation_num}")
             note.set_colors(stroke=color)
             
-            # 设置气泡批注的信息（使用 info 字典）
-            note.info["title"] = annotation_title
-            note.info["content"] = annotation_content  # 使用 content（单数）
-            note.info["subject"] = annotation_title
+            # 设置气泡批注的信息（统一使用 set_info）
+            note.set_info(title=annotation_title, content=annotation_content, subject=annotation_title)
             note.update()
+
+            # 在文本右侧添加可见 FreeText 注释（WPS / 浏览器兼容）
+            self._add_freetext_annotation(
+                page=page,
+                anchor_rect=rect,
+                title=annotation_title,
+                content=annotation_content,
+                color=color
+            )
             
             logger.debug(f"批注添加成功: 问题 #{violation_num} 在第 {violation.location.page} 页")
         else:
@@ -201,22 +215,34 @@ class PDFAnnotator:
         violation: Violation,
         violation_num: int
     ):
-        """降级方案：在页面右侧添加文本批注（避免重叠）"""
-        # 根据违规编号计算Y坐标,每个批注间隔60px避免重叠
-        y_offset = 50 + (violation_num - 1) * 60
-        point = pymupdf.Point(page.rect.width - 50, y_offset)
+        """降级方案：在页面右侧添加可见 FreeText（避免重叠）"""
+        # 根据违规编号计算Y坐标,每个批注间隔70px避免重叠
+        y_offset = 50 + (violation_num - 1) * 70
         color = self.SEVERITY_COLORS.get(violation.severity, (1, 1, 0))
-        
+
         annotation_content = self._format_annotation_content(violation, violation_num)
         annotation_title = self._format_annotation_title(violation, violation_num)
-        
-        note = page.add_text_annot(point, f"Q{violation_num}")
+
+        # 构造一个靠右的锚点矩形，作为 FreeText 的参考
+        anchor_width = 10
+        x1 = page.rect.width - 60
+        x0 = x1 - anchor_width
+        anchor_rect = pymupdf.Rect(x0, y_offset, x1, y_offset + 20)
+
+        # 放置可见 FreeText 注释
+        self._add_freetext_annotation(
+            page=page,
+            anchor_rect=anchor_rect,
+            title=annotation_title,
+            content=annotation_content,
+            color=color
+        )
+
+        # 同时放置一个小的编号便签（不承载正文）
+        note_point = pymupdf.Point(x1 + 5, y_offset)
+        note = page.add_text_annot(note_point, f"Q{violation_num}")
         note.set_colors(stroke=color)
-        
-        # 使用 info 字典设置批注信息
-        note.info["title"] = annotation_title
-        note.info["content"] = annotation_content  # 使用 content（单数）
-        note.info["subject"] = annotation_title
+        note.set_info(title=annotation_title, content=annotation_content, subject=annotation_title)
         note.update()
     
     def _format_annotation_content(self, violation: Violation, num: int) -> str:
@@ -308,37 +334,122 @@ class PDFAnnotator:
                 if img_rects:
                     img_rect = img_rects[0]
                     
-                    # 2. 在图片右上角添加醒目标记 - 去除表情符号
+                    # 2. 在图片右上角添加醒目标记
                     marker_point = img_rect.top_right + pymupdf.Point(5, 5)
                     note = page.add_text_annot(marker_point, f"IMG{violation_num}")
                     note.set_colors(stroke=color)
-                    
-                    # 使用 info 字典设置批注信息
-                    note.info["title"] = annotation_title
-                    note.info["content"] = annotation_content  # 使用 content（单数）
-                    note.info["subject"] = annotation_title
+                    note.set_info(title=annotation_title, content=annotation_content, subject=annotation_title)
                     note.update()
                     
                     # 3. 添加边框高亮图片区域
                     page.draw_rect(img_rect, color=color, width=2)
+
+                    # 4. 为图片添加可见 FreeText 注释
+                    self._add_freetext_annotation(
+                        page=page,
+                        anchor_rect=img_rect,
+                        title=annotation_title,
+                        content=annotation_content,
+                        color=color
+                    )
                     
                     logger.debug(f"图片批注添加成功: 问题 #{violation_num}")
                     return
             except Exception as e:
                 logger.warning(f"获取图片位置失败: {e}")
         
-        # 如果无法定位图片，在页面中央添加批注
+        # 如果无法定位图片，在页面中央右侧添加可见 FreeText
         center_point = pymupdf.Point(page.rect.width / 2, 100)
         note = page.add_text_annot(center_point, f"IMG{violation_num}")
         note.set_colors(stroke=color)
-        
-        # 使用 info 字典设置批注信息
-        note.info["title"] = annotation_title
-        note.info["content"] = annotation_content  # 使用 content（单数）
-        note.info["subject"] = annotation_title
+        note.set_info(title=annotation_title, content=annotation_content, subject=annotation_title)
         note.update()
+
+        # 使用一个合成的锚点矩形放置 FreeText
+        anchor_rect = pymupdf.Rect(center_point.x, center_point.y, center_point.x + 10, center_point.y + 20)
+        self._add_freetext_annotation(
+            page=page,
+            anchor_rect=anchor_rect,
+            title=annotation_title,
+            content=annotation_content,
+            color=color
+        )
         
         logger.debug(f"图片批注添加成功（降级方案）: 问题 #{violation_num}")
+
+    def _add_freetext_annotation(
+        self,
+        page: pymupdf.Page,
+        anchor_rect: pymupdf.Rect,
+        title: str,
+        content: str,
+        color: tuple
+    ) -> None:
+        """在 anchor_rect 附近添加可见 FreeText 注释。
+
+        放置策略：优先放在右侧；如果越界则放左侧；再进行上下回退，确保在页内。
+        """
+        # 估算文本高度
+        text_for_draw = self._compose_freetext_payload(title, content)
+        est_lines = max(2, (len(text_for_draw) // 28) + 1)
+        est_height = min(
+            max(self.FREETEXT_MIN_HEIGHT, est_lines * 14 + 20),
+            self.FREETEXT_MAX_HEIGHT
+        )
+        width = self.FREETEXT_MAX_WIDTH
+
+        # 初始放置在右侧
+        x0 = anchor_rect.x1 + 10
+        y0 = anchor_rect.y0
+        x1 = x0 + width
+        y1 = y0 + est_height
+
+        page_w = page.rect.width
+        page_h = page.rect.height
+
+        # 若右侧越界，改放左侧
+        if x1 > page_w - 10:
+            x1 = anchor_rect.x0 - 10
+            x0 = x1 - width
+
+        # 上下边界回退
+        if y1 > page_h - 10:
+            delta = (y1 - (page_h - 10))
+            y0 = max(10, y0 - delta)
+            y1 = y0 + est_height
+        if y0 < 10:
+            y0 = 10
+            y1 = y0 + est_height
+
+        rect = pymupdf.Rect(x0, y0, x1, y1)
+        freetext = page.add_freetext_annot(
+            rect,
+            text_for_draw,
+            fontsize=self.FREETEXT_FONT_SIZE,
+            text_color=(0, 0, 0),
+            fill_color=(1, 1, 1)
+        )
+        freettext_border_width = 0.7
+        try:
+            freetext.set_border(width=freettext_border_width)
+        except Exception:
+            pass
+        freetext.set_colors(stroke=color, fill=(1, 1, 1))
+        try:
+            freetext.set_opacity(0.92)
+        except Exception:
+            pass
+        freetext.set_flags(pymupdf.ANNOT_FLAG_PRINT)
+        freetext.set_info(title=title, content=content, subject=title)
+        freetext.update()
+
+    def _compose_freetext_payload(self, title: str, content: str) -> str:
+        """拼接 FreeText 展示文本（精简多行，控制长度）。"""
+        max_chars = 550
+        clean_content = content.replace("\r", "\n").strip()
+        if len(clean_content) > max_chars:
+            clean_content = clean_content[:max_chars] + "..."
+        return f"{title}\n\n{clean_content}"
 
 
 class DocumentAnnotator:
