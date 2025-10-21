@@ -202,7 +202,7 @@ class DocumentProcessor:
             images=[]
         )
         
-        # 提取文本块及位置
+        # 提取文本块及位置（同时保留前若干段落内容用于签字页/日期粗定位）
         try:
             text_dict = page.get_text("dict")
             para_idx = 0

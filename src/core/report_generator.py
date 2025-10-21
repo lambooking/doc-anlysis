@@ -70,7 +70,10 @@ class ReportGenerator:
         # 5. 详细问题列表
         self._add_violations_section(doc, audit_report)
         
-        # 6. 建议
+        # 6. 扣分汇总表（新增）
+        self._add_deduction_breakdown(doc, audit_report)
+
+        # 7. 建议
         self._add_recommendations_section(doc, audit_report)
         
         # 保存
@@ -280,4 +283,68 @@ class ReportGenerator:
             counts[violation.severity] = counts.get(violation.severity, 0) + 1
         
         return counts
+
+    def _add_deduction_breakdown(self, doc: Document, report: AuditReport):
+        """新增：按维度/检查点扣分汇总表。
+        说明：由于当前 `AuditResult` 不携带每维度扣分明细，这里根据
+        `violation.rule_id` 反查规则配置进行聚合。
+        """
+        from ..models.rule_engine import RuleEngine
+
+        doc.add_heading('扣分汇总', 1)
+
+        re_engine = RuleEngine()  # 使用默认规则文件
+
+        # 归并：维度 -> 检查点 -> 扣分
+        dim_map = {}
+        for v in report.audit_result.violations:
+            # 在所有场景中查找 rule_id
+            hit = None
+            for sid in re_engine.get_all_scenario_ids():
+                info = re_engine.get_checkpoint_info(sid, v.rule_id)
+                if info:
+                    hit = info
+                    break
+            if hit is None:
+                dim_key = ('未归类', 'others')
+                cp_key = v.rule_id
+                max_ded = 5
+            else:
+                dim = hit['dimension_id']
+                dim_name = dim
+                dim_key = (dim_name, dim)
+                cp_key = hit['checkpoint'].checkpoint_id
+                max_ded = hit['checkpoint'].max_deduction
+
+            dim_map.setdefault(dim_key, {})
+            current = dim_map[dim_key].get(cp_key, 0)
+            current += max(0, v.points_deducted)
+            dim_map[dim_key][cp_key] = min(current, max_ded)
+
+        if not dim_map:
+            doc.add_paragraph('无扣分。')
+            return
+
+        # 输出表格
+        for (dim_name, dim_id), cp_dict in dim_map.items():
+            doc.add_heading(f'维度：{dim_name}', 2)
+            table = doc.add_table(rows=1, cols=3)
+            hdr = table.rows[0].cells
+            hdr[0].text = '检查点ID'
+            hdr[1].text = '扣分'
+            hdr[2].text = '说明'
+            table.style = 'Light Grid Accent 1'
+
+            total_dim_ded = 0
+            for cp_id, ded in sorted(cp_dict.items()):
+                row = table.add_row().cells
+                row[0].text = cp_id
+                row[1].text = str(ded)
+                row[2].text = '累计至上限封顶'
+                total_dim_ded += ded
+
+            # 维度小结
+            p = doc.add_paragraph()
+            p.add_run(f'维度小结扣分：{total_dim_ded} 分').bold = True
+            doc.add_paragraph()
 

@@ -298,7 +298,7 @@ class VLMClient:
         user_prompt = self._generate_user_prompt(doc_structure)
         
         # 构建消息
-        messages = self._build_messages(system_prompt, user_prompt, page_images)
+        messages = self._build_messages(system_prompt, user_prompt, page_images, scenario_id, doc_structure)
         
         # 调用 VLM
         try:
@@ -373,9 +373,11 @@ class VLMClient:
         self,
         system_prompt: str,
         user_prompt: str,
-        page_images: List[Dict[str, Any]]
+        page_images: List[Dict[str, Any]],
+        scenario_id: str,
+        doc_structure: DocumentStructure
     ) -> List[Dict[str, Any]]:
-        """构建消息列表"""
+        """构建消息列表（场景化图片选择）。"""
         messages = [
             {"role": "system", "content": system_prompt}
         ]
@@ -383,8 +385,35 @@ class VLMClient:
         # 构建用户消息内容（图片 + 文本）
         user_content = []
         
-        # 添加页面图片（最多前 5 页）
-        for img_info in page_images[:5]:
+        # 场景化图片选择
+        selected_images = []
+        if "risk_management" in scenario_id:
+            # 1) 优先加入疑似签字页
+            sig_pages = self._find_signature_pages(doc_structure)
+            for p in sig_pages:
+                for img in page_images:
+                    if img.get('page') == p:
+                        selected_images.append(img)
+                        break
+            # 2) 再加入前 10 页作为全局语境
+            for img in page_images[:10]:
+                selected_images.append(img)
+        else:
+            # 作业指导书：保持前 5 页
+            selected_images = page_images[:5]
+
+        # 去重并限制数量（最多 12 张）
+        seen = set()
+        unique_images = []
+        for img in selected_images:
+            key = img.get('image_path')
+            if key not in seen:
+                unique_images.append(img)
+                seen.add(key)
+            if len(unique_images) >= 12:
+                break
+
+        for img_info in unique_images:
             image_path = img_info['image_path']
             user_content.append({
                 "type": "image_url",
@@ -397,12 +426,31 @@ class VLMClient:
             "text": user_prompt
         })
         
-        messages.append({
-            "role": "user",
-            "content": user_content
-        })
+        messages.append({"role": "user", "content": user_content})
         
         return messages
+
+    def _find_signature_pages(self, doc_structure: DocumentStructure) -> List[int]:
+        """从 Markdown 文本中粗略定位含“签字/审批/盖章/日期”等关键词的页码。
+        估算法：按 `DocumentProcessor._extract_page_range_text` 的假设，
+        每 50 行近似一页；这里直接从结构结构中获取页面号更靠谱。
+        实现：扫描每页段落，命中关键词即收集该页。
+        """
+        keywords = ["审批", "签字", "签名", "盖章", "日期", "年", "月", "日"]
+        hit_pages = []
+        try:
+            for page_struct in doc_structure.structure:
+                text = "\n".join(p.text for p in page_struct.paragraphs[:20])
+                if any(k in text for k in keywords):
+                    hit_pages.append(page_struct.page)
+            # 若一个都没匹配，默认返回最后 2 页尝试
+            if not hit_pages:
+                total = doc_structure.page_count
+                hit_pages = [p for p in range(max(1, total - 1), total + 1)]
+        except Exception:
+            pass
+        # 限制最多 3 页
+        return hit_pages[:3]
     
     def _call_vlm(self, messages: List[Dict[str, Any]]) -> AuditResult:
         """

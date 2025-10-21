@@ -22,6 +22,8 @@ class RuleEngine:
             data = yaml.safe_load(f)
         
         self.config = AuditRuleConfig(**data)
+        # 构建索引便于计分
+        self._build_index()
     
     def get_scenario(self, scenario_id: str) -> Optional[AuditScenario]:
         """获取指定场景的规则"""
@@ -62,4 +64,47 @@ class RuleEngine:
         if not self.config:
             return []
         return [scenario.scenario_id for scenario in self.config.audit_scenarios]
+
+    # ==================== 计分辅助（新增） ====================
+    def _build_index(self):
+        """根据规则配置构建快速索引。"""
+        self._checkpoint_index = {}  # (scenario_id, checkpoint_id) -> dict
+        self._dimension_index = {}   # (scenario_id, dimension_id) -> dimension
+        if not self.config:
+            return
+        for scenario in self.config.audit_scenarios:
+            for dim in scenario.dimensions:
+                self._dimension_index[(scenario.scenario_id, dim.dimension_id)] = dim
+                for item in dim.items:
+                    for cp in item.checkpoints:
+                        self._checkpoint_index[(scenario.scenario_id, cp.checkpoint_id)] = {
+                            'scenario_id': scenario.scenario_id,
+                            'scenario_total_points': scenario.total_points,
+                            'dimension_id': dim.dimension_id,
+                            'dimension_weight': dim.weight,
+                            'item_id': item.item_id,
+                            'checkpoint': cp,
+                        }
+
+    def get_checkpoint_info(self, scenario_id: str, checkpoint_id: str):
+        """返回检查点信息与所在维度权重。
+        返回 None 表示在规则中未定义该检查点。
+        """
+        if not hasattr(self, '_checkpoint_index'):
+            self._build_index()
+        return self._checkpoint_index.get((scenario_id, checkpoint_id))
+
+    def get_dimension_max_points(self, scenario_id: str, dimension_id: str) -> int:
+        """返回某维度的满分（权重×场景总分，取整）。"""
+        scenario = self.get_scenario(scenario_id)
+        if not scenario:
+            return 0
+        dim = None
+        for d in scenario.dimensions:
+            if d.dimension_id == dimension_id:
+                dim = d
+                break
+        if not dim:
+            return 0
+        return int(round(scenario.total_points * dim.weight))
 

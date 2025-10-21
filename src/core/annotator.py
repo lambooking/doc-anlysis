@@ -25,7 +25,7 @@ class PDFAnnotator:
     FREETEXT_MIN_HEIGHT = 120
     FREETEXT_MAX_HEIGHT = 240
     FREETEXT_FONT_SIZE = 9
-    ENABLE_HIGHLIGHT = True
+    ENABLE_HIGHLIGHT = False
     SIDEBAR_WIDTH = 220
     SIDEBAR_MARGIN = 10
     SIDEBAR_TOP = 40
@@ -139,31 +139,10 @@ class PDFAnnotator:
             # 使用第一个匹配的位置
             rect = rects[0]
             color = self.SEVERITY_COLORS.get(violation.severity, (1, 1, 0))
-            
-            # 添加高亮（可选）
-            highlight = None
-            if self.ENABLE_HIGHLIGHT:
-                highlight = page.add_highlight_annot(rect)
-                highlight.set_colors(stroke=color)
-                highlight.set_opacity(0.5)
-                
-            # 使用详细的批注内容
+
+            # 使用详细的批注内容，仅侧边栏呈现，避免任何叠加元素
             annotation_content = self._format_annotation_content(violation, violation_num)
             annotation_title = self._format_annotation_title(violation, violation_num)
-            
-            # 设置高亮批注的信息（统一使用 set_info，提升兼容性）
-            if highlight is not None:
-                highlight.set_info(title=annotation_title, content=annotation_content, subject=annotation_title)
-                highlight.update()
-            
-            # 在旁边添加气泡标记（编号锚点）
-            point = rect.top_right + pymupdf.Point(10, 0)  # 右侧10px
-            note = page.add_text_annot(point, f"Q{violation_num}")
-            note.set_colors(stroke=color)
-            
-            # 设置气泡批注的信息（统一使用 set_info）
-            note.set_info(title=annotation_title, content=annotation_content, subject=annotation_title)
-            note.update()
 
             # 将正文内容写入“右侧边栏”，并画连线
             self._add_sidebar_annotation(
@@ -248,12 +227,7 @@ class PDFAnnotator:
             color=color
         )
 
-        # 同时放置一个小的编号便签（不承载正文）
-        note_point = pymupdf.Point(x1 + 5, y_offset)
-        note = page.add_text_annot(note_point, f"Q{violation_num}")
-        note.set_colors(stroke=color)
-        note.set_info(title=annotation_title, content=annotation_content, subject=annotation_title)
-        note.update()
+        # 仅侧边栏呈现，不放置任何气泡或高亮，避免重叠
     
     def _format_annotation_content(self, violation: Violation, num: int) -> str:
         """
@@ -344,17 +318,10 @@ class PDFAnnotator:
                 if img_rects:
                     img_rect = img_rects[0]
                     
-                    # 2. 在图片右上角添加醒目标记
-                    marker_point = img_rect.top_right + pymupdf.Point(5, 5)
-                    note = page.add_text_annot(marker_point, f"IMG{violation_num}")
-                    note.set_colors(stroke=color)
-                    note.set_info(title=annotation_title, content=annotation_content, subject=annotation_title)
-                    note.update()
-                    
-                    # 3. 添加边框高亮图片区域
+                    # 2. 添加边框高亮图片区域（仅绘制，不添加注释对象）
                     page.draw_rect(img_rect, color=color, width=2)
 
-                    # 4. 为图片添加边栏说明
+                    # 3. 为图片添加边栏说明
                     self._add_sidebar_annotation(
                         page=page,
                         anchor_rect=img_rect,
@@ -368,14 +335,8 @@ class PDFAnnotator:
             except Exception as e:
                 logger.warning(f"获取图片位置失败: {e}")
         
-        # 如果无法定位图片，在页面中央右侧添加可见 FreeText
+        # 如果无法定位图片，使用一个合成的锚点矩形写入边栏（不放置气泡）
         center_point = pymupdf.Point(page.rect.width / 2, 100)
-        note = page.add_text_annot(center_point, f"IMG{violation_num}")
-        note.set_colors(stroke=color)
-        note.set_info(title=annotation_title, content=annotation_content, subject=annotation_title)
-        note.update()
-
-        # 使用一个合成的锚点矩形写入边栏
         anchor_rect = pymupdf.Rect(center_point.x, center_point.y, center_point.x + 10, center_point.y + 20)
         self._add_sidebar_annotation(
             page=page,

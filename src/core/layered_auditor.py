@@ -721,20 +721,68 @@ class LayeredAuditor:
         return content
     
     def _build_audit_result(self, violations: List[Violation]) -> AuditResult:
-        """构建最终审核结果（增加保护）"""
-        
-        # 计算总扣分
-        total_deductions = sum(v.points_deducted for v in violations)
-        
-        # ⚠️ 保护措施：扣分上限
-        MAX_TOTAL_DEDUCTIONS = 80  # 最多扣 80 分
+        """构建最终审核结果（按维度权重+检查点封顶扣分）。"""
+
+        # 归并到检查点并进行封顶
+        deductions_by_checkpoint = {}
+        for v in violations:
+            # rule_id 即 checkpoint_id
+            # 从 rule_engine 查询该检查点配置（可能不存在，容错为直接计分）
+            cp_info = None
+            try:
+                cp_info = self.rule_engine.get_checkpoint_info(self.vlm_client.rule_engine.get_scenario('work_instruction_audit').scenario_id if False else '', v.rule_id)  # placeholder
+            except Exception:
+                cp_info = None
+
+            # 更稳妥：直接使用本引擎持有的 rule_engine 查询两个场景之一
+            if cp_info is None:
+                # 尝试在所有场景中查找该 checkpoint
+                for sid in self.rule_engine.get_all_scenario_ids():
+                    info = self.rule_engine.get_checkpoint_info(sid, v.rule_id)
+                    if info is not None:
+                        cp_info = info
+                        break
+
+            # key 使用 (scenario_id, checkpoint_id)
+            if cp_info:
+                key = (cp_info['scenario_id'], v.rule_id)
+                max_ded = cp_info['checkpoint'].max_deduction
+            else:
+                key = ('__unknown__', v.rule_id)
+                max_ded = 5  # 未定义检查点的默认上限
+
+            current = deductions_by_checkpoint.get(key, 0)
+            current += max(0, v.points_deducted)
+            deductions_by_checkpoint[key] = min(current, max_ded)
+
+        # 按维度累计并受维度满分（权重×总分）约束
+        deductions_by_dimension = {}
+        for (scenario_id, checkpoint_id), ded in deductions_by_checkpoint.items():
+            if scenario_id == '__unknown__':
+                # 未知检查点直接归入一个“其他”维度，不做权重上限（但会受总上限保护）
+                dim_key = ('__unknown__', '__others__')
+                max_points = 100
+            else:
+                cp_info = self.rule_engine.get_checkpoint_info(scenario_id, checkpoint_id)
+                dim_id = cp_info['dimension_id'] if cp_info else '__others__'
+                dim_key = (scenario_id, dim_id)
+                max_points = self.rule_engine.get_dimension_max_points(scenario_id, dim_id)
+
+            current = deductions_by_dimension.get(dim_key, 0)
+            current += ded
+            deductions_by_dimension[dim_key] = min(current, max_points)
+
+        total_deductions = sum(deductions_by_dimension.values())
+
+        # 总扣分保护
+        MAX_TOTAL_DEDUCTIONS = 80
         if total_deductions > MAX_TOTAL_DEDUCTIONS:
             logger.warning(f"⚠️ 总扣分 {total_deductions} 超过上限 {MAX_TOTAL_DEDUCTIONS}，已限制")
             total_deductions = MAX_TOTAL_DEDUCTIONS
-        
+
         final_score = max(0, 100 - total_deductions)
         passed = final_score >= 60
-        
+
         return AuditResult(
             violations=violations,
             total_deductions=total_deductions,
